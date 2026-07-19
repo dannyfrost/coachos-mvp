@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
+import { T, shadow, font, Badge, Btn, Avatar, initialsOf } from '../../../../lib/design-system'
 
 type FlashCardData = {
   id: string
@@ -15,14 +16,12 @@ type FlashCardData = {
   computed_at: string
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  red: '#dc3545',
-  yellow: '#ffc107',
-  green: '#28a745',
-  paused: '#6c757d',
+const BORDER_COLOR: Record<string, string> = {
+  green: T.successMid,
+  yellow: T.amberMid,
+  red: T.redMid,
+  paused: '#d1d5db',
 }
-
-const NOTES_MAX = 120
 
 export default function FlashCard({
   card: initialCard,
@@ -37,13 +36,11 @@ export default function FlashCard({
   const [loading, setLoading] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
 
-  const isStale =
-    new Date(card.computed_at) < new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const statusColor = STATUS_COLORS[card.status] ?? '#6c757d'
-  const truncatedNotes =
-    card.notes && card.notes.length > NOTES_MAX
-      ? card.notes.slice(0, NOTES_MAX) + '...'
-      : card.notes
+  const [notesValue, setNotesValue] = useState(card.notes ?? '')
+  const [notesSaving, setNotesSaving] = useState(false)
+  const [notesSaved, setNotesSaved] = useState(false)
+
+  const isStale = new Date(card.computed_at) < new Date(Date.now() - 24 * 60 * 60 * 1000)
 
   async function handleRefresh() {
     setLoading(true)
@@ -58,6 +55,7 @@ export default function FlashCard({
       } else {
         const updated = (data as FlashCardData[])[0]
         setCard(updated)
+        setNotesValue(updated.notes ?? '')
         onRefresh(updated)
       }
     } catch {
@@ -67,107 +65,138 @@ export default function FlashCard({
     }
   }
 
+  async function handleSaveNotes() {
+    setNotesSaving(true)
+    setNotesSaved(false)
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const { error } = await supabase.rpc('update_flash_card_notes', {
+        p_card_id: card.id,
+        p_notes: notesValue,
+      })
+      if (!error) {
+        setCard(prev => ({ ...prev, notes: notesValue }))
+        setNotesSaved(true)
+        setTimeout(() => setNotesSaved(false), 1500)
+      }
+    } finally {
+      setNotesSaving(false)
+    }
+  }
+
   return (
     <div
       style={{
-        border: `2px solid ${statusColor}`,
-        borderRadius: 8,
-        padding: '1rem',
-        background: '#fff',
+        background: T.white,
+        borderRadius: 14,
+        overflow: 'hidden',
+        boxShadow: shadow.card,
+        borderLeft: `4px solid ${BORDER_COLOR[card.status] ?? '#d1d5db'}`,
+        opacity: card.status === 'paused' ? 0.75 : 1,
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.25rem',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <strong>{clientName}</strong>
-        <span
-          style={{
-            background: statusColor,
-            color: card.status === 'yellow' ? '#000' : '#fff',
-            padding: '0.2rem 0.6rem',
-            borderRadius: 12,
-            fontSize: '0.8rem',
-            textTransform: 'uppercase',
-          }}
-        >
-          {card.status}
-        </span>
-      </div>
-
-      {isStale && (
-        <div
-          style={{
-            fontSize: '0.75rem',
-            color: '#856404',
-            background: '#fff3cd',
-            padding: '0.25rem 0.5rem',
-            borderRadius: 4,
-          }}
-        >
-          Stale — computed &gt;24h ago
+      <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${T.border}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Avatar initials={initialsOf(clientName)} />
+            <div>
+              <div style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 15, color: T.onSurface }}>{clientName}</div>
+              <div style={{ fontSize: 11, color: T.muted }}>
+                {card.last_log_at ? `Last log ${new Date(card.last_log_at).toLocaleDateString()}` : 'No logs yet'}
+              </div>
+            </div>
+          </div>
+          <Badge status={card.status} small />
         </div>
-      )}
-
-      {card.reason && (
-        <p style={{ margin: 0, fontSize: '0.9rem', color: '#495057' }}>
-          <strong>Reason:</strong> {card.reason}
-        </p>
-      )}
-      {card.food_summary && (
-        <p style={{ margin: 0, fontSize: '0.85rem', color: '#6c757d' }}>{card.food_summary}</p>
-      )}
-      {card.interpretation && (
-        <p style={{ margin: 0, fontSize: '0.85rem', fontStyle: 'italic', color: '#495057' }}>
-          {card.interpretation}
-        </p>
-      )}
-      {truncatedNotes && (
-        <p
-          style={{
-            margin: 0,
-            fontSize: '0.8rem',
-            color: '#6c757d',
-            borderTop: '1px solid #e9ecef',
-            paddingTop: '0.25rem',
-          }}
-        >
-          <strong>Notes:</strong> {truncatedNotes}
-        </p>
-      )}
-      {card.last_log_at && (
-        <p style={{ margin: 0, fontSize: '0.75rem', color: '#adb5bd' }}>
-          Last log: {new Date(card.last_log_at).toLocaleString()}
-        </p>
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', marginTop: '0.5rem', gap: '0.5rem' }}>
-        <a
-          href={`/clients/${card.client_id}`}
-          style={{ fontSize: '0.85rem', color: '#0d6efd', textDecoration: 'none' }}
-        >
-          Open Profile
-        </a>
-        <button
-          onClick={handleRefresh}
-          disabled={loading}
-          style={{
-            marginLeft: 'auto',
-            padding: '0.25rem 0.75rem',
-            fontSize: '0.85rem',
-            cursor: loading ? 'not-allowed' : 'pointer',
-            background: '#0d6efd',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-          }}
-        >
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </button>
       </div>
-      {refreshError && (
-        <p style={{ color: '#dc3545', fontSize: '0.8rem', margin: 0 }}>{refreshError}</p>
-      )}
+
+      <div style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {isStale && (
+          <div
+            style={{
+              fontSize: 11,
+              color: T.amber,
+              background: T.amberBg,
+              padding: '4px 8px',
+              borderRadius: 6,
+              marginBottom: 10,
+              fontWeight: 600,
+            }}
+          >
+            Stale — computed &gt;24h ago
+          </div>
+        )}
+
+        {card.food_summary && (
+          <div style={{ background: T.surfaceLow, borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 3 }}>
+              Meals
+            </div>
+            <div style={{ fontSize: 12, color: T.onSurfaceVar, lineHeight: 1.5 }}>{card.food_summary}</div>
+          </div>
+        )}
+
+        {card.reason && (
+          <div
+            style={{
+              fontSize: 12,
+              color: card.status === 'red' ? T.red : card.status === 'yellow' ? T.amber : T.onSurfaceVar,
+              lineHeight: 1.5,
+              marginBottom: 10,
+              fontWeight: card.status !== 'green' ? 600 : 400,
+            }}
+          >
+            {card.reason}
+          </div>
+        )}
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+            Coach Notes
+          </div>
+          <textarea
+            value={notesValue}
+            onChange={e => setNotesValue(e.target.value)}
+            placeholder="Add a note..."
+            style={{
+              width: '100%',
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: 'none',
+              background: T.surfaceLow,
+              borderBottom: `2px solid ${T.primary}`,
+              fontFamily: font.body,
+              fontSize: 12,
+              color: T.onSurface,
+              outline: 'none',
+              resize: 'none',
+              minHeight: 52,
+              boxSizing: 'border-box',
+              lineHeight: 1.5,
+            }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <Btn small variant="secondary" onClick={handleSaveNotes} disabled={notesSaving || notesValue === (card.notes ?? '')}>
+              {notesSaving ? 'Saving...' : 'Save note'}
+            </Btn>
+            {notesSaved && <span style={{ fontSize: 11, color: T.success, fontWeight: 600 }}>Saved</span>}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 'auto', display: 'flex', gap: 6 }}>
+          <a href={`/clients/${card.client_id}`} style={{ flex: 1, textDecoration: 'none' }}>
+            <Btn small variant="primary" full>
+              Profile
+            </Btn>
+          </a>
+          <Btn small variant="secondary" onClick={handleRefresh} disabled={loading} style={{ flex: 1 }}>
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </Btn>
+        </div>
+        {refreshError && <p style={{ color: T.red, fontSize: 11, margin: '6px 0 0' }}>{refreshError}</p>}
+      </div>
     </div>
   )
 }

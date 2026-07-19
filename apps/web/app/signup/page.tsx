@@ -3,22 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
-
-const inputStyle: React.CSSProperties = {
-  display: 'block',
-  width: '100%',
-  padding: '0.5rem',
-  marginBottom: '1rem',
-  border: '1px solid #ccc',
-  borderRadius: 4,
-  boxSizing: 'border-box',
-}
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  marginBottom: '0.25rem',
-  fontSize: '0.9rem',
-}
+import { T, shadow, font, Btn, FieldLabel, inputStyle } from '../../lib/design-system'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -75,100 +60,112 @@ export default function SignupPage() {
         justifyContent: 'center',
         alignItems: 'center',
         minHeight: '100vh',
-        fontFamily: 'sans-serif',
+        background: T.surface,
+        fontFamily: font.body,
+        padding: '2rem 0',
       }}
     >
       <form
         onSubmit={handleSubmit}
-        style={{ width: 360, padding: '2rem', border: '1px solid #dee2e6', borderRadius: 8 }}
+        style={{ width: 400, padding: '2.5rem', background: T.white, borderRadius: 16, boxShadow: shadow.float }}
       >
-        <h1 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>Create your coach account</h1>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.1em',
+            color: T.primary,
+            textTransform: 'uppercase',
+            marginBottom: 6,
+          }}
+        >
+          CoachOS
+        </div>
+        <h1 style={{ margin: '0 0 1.5rem', fontFamily: font.heading, fontWeight: 800, fontSize: 22, color: T.onSurface }}>
+          Create your coach account
+        </h1>
         {error && (
           <div
             style={{
-              background: '#f8d7da',
-              border: '1px solid #f5c2c7',
-              color: '#842029',
+              background: T.redBg,
+              color: T.red,
               padding: '0.75rem',
-              borderRadius: 4,
+              borderRadius: 8,
               marginBottom: '1rem',
-              fontSize: '0.9rem',
+              fontSize: 13,
+              fontWeight: 600,
             }}
           >
             {error}
           </div>
         )}
 
-        <label style={labelStyle}>Full name</label>
-        <input
-          type="text"
-          value={fullName}
-          onChange={e => setFullName(e.target.value)}
-          required
-          minLength={2}
-          maxLength={100}
-          autoComplete="name"
-          style={inputStyle}
-        />
+        <div style={{ marginBottom: '1rem' }}>
+          <FieldLabel>Full name</FieldLabel>
+          <input
+            type="text"
+            value={fullName}
+            onChange={e => setFullName(e.target.value)}
+            required
+            minLength={2}
+            maxLength={100}
+            autoComplete="name"
+            style={inputStyle}
+          />
+        </div>
 
-        <label style={labelStyle}>Workspace name</label>
-        <input
-          type="text"
-          value={workspaceName}
-          onChange={e => setWorkspaceName(e.target.value)}
-          required
-          minLength={2}
-          maxLength={50}
-          style={inputStyle}
-        />
+        <div style={{ marginBottom: '1rem' }}>
+          <FieldLabel>Workspace name</FieldLabel>
+          <input
+            type="text"
+            value={workspaceName}
+            onChange={e => setWorkspaceName(e.target.value)}
+            required
+            minLength={2}
+            maxLength={50}
+            style={inputStyle}
+          />
+        </div>
 
-        <label style={labelStyle}>Email</label>
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          required
-          autoComplete="email"
-          style={inputStyle}
-        />
+        <div style={{ marginBottom: '1rem' }}>
+          <FieldLabel>Email</FieldLabel>
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+            style={inputStyle}
+          />
+        </div>
 
-        <label style={labelStyle}>Password</label>
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-          minLength={8}
-          autoComplete="new-password"
-          style={inputStyle}
-        />
+        <div style={{ marginBottom: '1rem' }}>
+          <FieldLabel>Password</FieldLabel>
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            minLength={8}
+            autoComplete="new-password"
+            style={inputStyle}
+          />
+        </div>
 
-        <label style={labelStyle}>Invitation code</label>
-        <input
-          type="text"
-          value={inviteCode}
-          onChange={e => setInviteCode(e.target.value)}
-          required
-          style={{ ...inputStyle, marginBottom: '1.5rem' }}
-        />
+        <div style={{ marginBottom: '1.75rem' }}>
+          <FieldLabel>Invitation code</FieldLabel>
+          <input
+            type="text"
+            value={inviteCode}
+            onChange={e => setInviteCode(e.target.value)}
+            required
+            style={inputStyle}
+          />
+        </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            display: 'block',
-            width: '100%',
-            padding: '0.6rem',
-            background: '#0d6efd',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-            fontSize: '1rem',
-            cursor: loading ? 'not-allowed' : 'pointer',
-          }}
-        >
+        <Btn type="submit" full disabled={loading}>
           {loading ? 'Creating account...' : 'Create account'}
-        </button>
+        </Btn>
       </form>
     </div>
   )

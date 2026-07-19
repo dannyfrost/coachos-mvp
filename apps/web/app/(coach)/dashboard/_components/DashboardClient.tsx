@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import FlashCard from './FlashCard'
+import { T, shadow, font, Card, SectionLabel } from '../../../../lib/design-system'
 
 type FlashCardData = {
   id: string
@@ -35,16 +36,12 @@ type Props = {
 }
 
 const SEVERITY_ORDER: Record<string, number> = { red: 0, yellow: 1, green: 2, paused: 3 }
+const FILTERS = ['all', 'red', 'yellow', 'green', 'paused'] as const
 
-export default function DashboardClient({
-  flashCards: initialCards,
-  clients,
-  missingCheckIns,
-  subscription,
-}: Props) {
+export default function DashboardClient({ flashCards: initialCards, clients, missingCheckIns, subscription }: Props) {
   const [cards, setCards] = useState<FlashCardData[]>(initialCards)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<(typeof FILTERS)[number]>('all')
 
   const clientMap = useMemo(() => {
     const map = new Map<string, ClientData>()
@@ -52,10 +49,7 @@ export default function DashboardClient({
     return map
   }, [clients])
 
-  const activeCount = useMemo(
-    () => clients.filter(c => c.status === 'active').length,
-    [clients]
-  )
+  const activeCount = useMemo(() => clients.filter(c => c.status === 'active').length, [clients])
 
   const stats = useMemo(
     () => ({
@@ -77,9 +71,7 @@ export default function DashboardClient({
       const term = search.toLowerCase()
       filtered = filtered.filter(c => {
         const client = clientMap.get(c.client_id)
-        if (!client) return false
-        const name = (client.full_name ?? '').toLowerCase()
-        return name.includes(term)
+        return !!client && (client.full_name ?? '').toLowerCase().includes(term)
       })
     }
 
@@ -100,112 +92,99 @@ export default function DashboardClient({
 
   const isTrial = subscription?.plan_name === 'trial' && !!subscription.current_period_end
 
+  const kpis = [
+    { label: 'Active Clients', value: String(activeCount), color: T.primary },
+    { label: 'Missing Check-ins Today', value: String(missingCheckIns), color: T.redMid },
+    { label: 'Red', value: String(stats.red), color: T.redMid },
+    { label: 'Yellow', value: String(stats.yellow), color: T.amberMid },
+    { label: 'Green', value: String(stats.green), color: T.successMid },
+  ]
+
   return (
-    <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
+    <div style={{ padding: '24px 28px' }}>
       {isTrial && (
         <div
           style={{
-            background: '#fff3cd',
-            border: '1px solid #ffc107',
-            borderRadius: 8,
-            padding: '0.75rem 1rem',
-            marginBottom: '1rem',
+            background: T.amberBg,
+            color: T.amber,
+            borderRadius: 10,
+            padding: '10px 16px',
+            marginBottom: 20,
+            fontSize: 13,
+            fontWeight: 600,
           }}
         >
-          Trial active — ends{' '}
-          {new Date(subscription!.current_period_end!).toLocaleDateString()}
+          Trial active — ends {new Date(subscription!.current_period_end!).toLocaleDateString()}
         </div>
       )}
 
-      <h1 style={{ marginBottom: '1rem' }}>Coach Dashboard</h1>
-
-      <div
-        style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}
-      >
-        <StatCard label="Active Clients" value={activeCount} />
-        <StatCard label="Missing Check-ins Today" value={missingCheckIns} />
-        <StatCard label="Red" value={stats.red} color="#dc3545" />
-        <StatCard label="Yellow" value={stats.yellow} color="#856404" />
-        <StatCard label="Green" value={stats.green} color="#28a745" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 14, marginBottom: 24 }}>
+        {kpis.map(kpi => (
+          <Card key={kpi.label} style={{ padding: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>
+              {kpi.label}
+            </div>
+            <div style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 26, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
+          </Card>
+        ))}
       </div>
 
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <input
-          type="text"
-          placeholder="Search by client name..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <SectionLabel>Flash Cards</SectionLabel>
+        <div
           style={{
-            padding: '0.5rem',
-            border: '1px solid #ccc',
-            borderRadius: 4,
-            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: T.white,
+            borderRadius: 8,
+            padding: '7px 12px',
+            boxShadow: shadow.card,
+            maxWidth: 240,
           }}
-        />
-        <select
-          aria-label="Filter by status"
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          style={{ padding: '0.5rem', border: '1px solid #ccc', borderRadius: 4 }}
         >
-          <option value="all">All statuses</option>
-          <option value="red">Red</option>
-          <option value="yellow">Yellow</option>
-          <option value="green">Green</option>
-        </select>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search clients..."
+            style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 13, color: T.onSurface, fontFamily: font.body, width: '100%' }}
+          />
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {FILTERS.map(f => (
+            <button
+              key={f}
+              onClick={() => setStatusFilter(f)}
+              style={{
+                padding: '5px 12px',
+                borderRadius: 20,
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontFamily: font.body,
+                fontWeight: 600,
+                transition: 'all 0.15s',
+                background: statusFilter === f ? T.primary : T.surfaceHigh,
+                color: statusFilter === f ? '#fff' : T.onSurfaceVar,
+              }}
+            >
+              {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {sortedAndFiltered.length === 0 ? (
-        <p style={{ color: '#6c757d' }}>No clients match your filter.</p>
+        <Card style={{ textAlign: 'center', color: T.muted, fontSize: 13, padding: '40px 24px' }}>No clients match your filter.</Card>
       ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '1rem',
-          }}
-        >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
           {sortedAndFiltered.map(card => {
             const client = clientMap.get(card.client_id)
             const clientName = client?.full_name?.trim() || 'Unknown'
-            return (
-              <FlashCard
-                key={card.id}
-                card={card}
-                clientName={clientName}
-                onRefresh={handleRefresh}
-              />
-            )
+            return <FlashCard key={card.id} card={card} clientName={clientName} onRefresh={handleRefresh} />
           })}
         </div>
       )}
-    </div>
-  )
-}
-
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string
-  value: number
-  color?: string
-}) {
-  return (
-    <div
-      style={{
-        background: '#f8f9fa',
-        border: '1px solid #dee2e6',
-        borderRadius: 8,
-        padding: '0.75rem 1rem',
-        minWidth: 120,
-      }}
-    >
-      <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: color ?? '#212529' }}>
-        {value}
-      </div>
-      <div style={{ fontSize: '0.85rem', color: '#6c757d' }}>{label}</div>
     </div>
   )
 }

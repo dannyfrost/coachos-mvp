@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
+import { T, shadow, font, Btn, FieldLabel, inputStyle } from '../../lib/design-system'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -38,84 +39,75 @@ export default function LoginPage() {
         justifyContent: 'center',
         alignItems: 'center',
         minHeight: '100vh',
-        fontFamily: 'sans-serif',
+        background: T.surface,
+        fontFamily: font.body,
       }}
     >
       <form
         onSubmit={handleSubmit}
-        style={{ width: 360, padding: '2rem', border: '1px solid #dee2e6', borderRadius: 8 }}
+        style={{ width: 380, padding: '2.5rem', background: T.white, borderRadius: 16, boxShadow: shadow.float }}
       >
-        <h1 style={{ marginBottom: '1.5rem', fontSize: '1.5rem' }}>Sign in</h1>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.1em',
+            color: T.primary,
+            textTransform: 'uppercase',
+            marginBottom: 6,
+          }}
+        >
+          CoachOS
+        </div>
+        <h1 style={{ margin: '0 0 1.5rem', fontFamily: font.heading, fontWeight: 800, fontSize: 22, color: T.onSurface }}>
+          Sign in
+        </h1>
         {error && (
           <div
             style={{
-              background: '#f8d7da',
-              border: '1px solid #f5c2c7',
-              color: '#842029',
+              background: T.redBg,
+              color: T.red,
               padding: '0.75rem',
-              borderRadius: 4,
+              borderRadius: 8,
               marginBottom: '1rem',
-              fontSize: '0.9rem',
+              fontSize: 13,
+              fontWeight: 600,
             }}
           >
             {error}
           </div>
         )}
-        <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
-          Email
-        </label>
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          required
-          autoComplete="email"
-          style={{
-            display: 'block',
-            width: '100%',
-            padding: '0.5rem',
-            marginBottom: '1rem',
-            border: '1px solid #ccc',
-            borderRadius: 4,
-            boxSizing: 'border-box',
-          }}
-        />
-        <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
-          Password
-        </label>
-        <input
-          type="password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-          autoComplete="current-password"
-          style={{
-            display: 'block',
-            width: '100%',
-            padding: '0.5rem',
-            marginBottom: '1.5rem',
-            border: '1px solid #ccc',
-            borderRadius: 4,
-            boxSizing: 'border-box',
-          }}
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            display: 'block',
-            width: '100%',
-            padding: '0.6rem',
-            background: '#0d6efd',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-            fontSize: '1rem',
-            cursor: loading ? 'not-allowed' : 'pointer',
-          }}
-        >
+        <div style={{ marginBottom: '1rem' }}>
+          <FieldLabel>Email</FieldLabel>
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ marginBottom: '1.75rem' }}>
+          <FieldLabel>Password</FieldLabel>
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+            style={inputStyle}
+          />
+        </div>
+        <Btn type="submit" full disabled={loading}>
           {loading ? 'Signing in...' : 'Sign in'}
-        </button>
+        </Btn>
+        <div style={{ marginTop: 20, textAlign: 'center', fontSize: 13, color: T.muted }}>
+          New coach?{' '}
+          <a href="/signup" style={{ color: T.primary, fontWeight: 600, textDecoration: 'none' }}>
+            Create an account
+          </a>
+        </div>
       </form>
     </div>
   )
