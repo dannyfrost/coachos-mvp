@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Coaching",
+    "slug": "coaching-mobile",
+    "version": "1.0.0",
+    "scheme": "coachapp",
+    "platforms": ["ios", "android"],
+    "sdkVersion": "52.0.0",
+    "orientation": "portrait",
+    "plugins": [
+      "expo-router"
+    ],
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    }
+  }
+}

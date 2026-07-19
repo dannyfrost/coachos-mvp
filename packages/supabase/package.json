@@ -1,0 +1,28 @@
+{
+  "name": "@coaching/supabase",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./client": "./client.ts",
+    "./server": "./server.ts",
+    "./auth-server": "./auth-server.ts",
+    "./browser": "./browser.ts",
+    "./ssr-server": "./ssr-server.ts",
+    "./mobile": "./mobile.ts"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2"
+  },
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

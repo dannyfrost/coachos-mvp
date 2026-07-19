@@ -1,0 +1,26 @@
+{
+  "name": "coaching-platform",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Coaching Platform MVP - monorepo root",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:mobile": "pnpm --filter @coaching/mobile start",
+    "build:web": "pnpm --filter web build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter @coaching/supabase migrate",
+    "db:reset": "npx supabase@2.98.2 db reset",
+    "db:types": "npx supabase@2.98.2 gen types typescript --local > packages/supabase/database.types.ts"
+  },
+  "devDependencies": {
+    "turbo": "^2",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
