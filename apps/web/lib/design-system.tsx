@@ -60,6 +60,8 @@ const BADGE_MAP: Record<string, { bg: string; text: string; label: string }> = {
   deactivated: { bg: '#f3f4f6', text: T.muted, label: 'Deactivated' },
   expired: { bg: T.redBg, text: T.red, label: 'Expired' },
   overdue: { bg: T.amberBg, text: T.amber, label: 'Overdue' },
+  meal: { bg: '#f0fdf4', text: '#166534', label: 'Meal' },
+  workout: { bg: T.blueBg, text: T.blue, label: 'Workout' },
 }
 
 export function Badge({ status, small, labelOverride }: { status: string; small?: boolean; labelOverride?: string }) {
