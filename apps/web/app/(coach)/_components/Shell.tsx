@@ -78,7 +78,7 @@ const NAV: NavItem[] = [
   { id: 'clients', label: 'Clients', href: '/clients', Icon: ClientsIcon },
   { id: 'plans', label: 'Plans', href: '/plans', Icon: PlansIcon },
   { id: 'messages', label: 'Messages', href: '/messages', Icon: MessagesIcon },
-  { id: 'alerts', label: 'Alerts', href: '#', Icon: AlertsIcon, soon: true },
+  { id: 'alerts', label: 'Alerts', href: '/alerts', Icon: AlertsIcon },
   { id: 'reports', label: 'Reports', href: '#', Icon: ReportsIcon, soon: true },
 ]
 
@@ -104,7 +104,9 @@ export function Shell({
         ? 'Plans'
         : pathname.startsWith('/messages')
           ? 'Messages'
-          : 'Dashboard'
+          : pathname.startsWith('/alerts')
+            ? 'Alerts'
+            : 'Dashboard'
 
   async function handleSignOut() {
     const supabase = createSupabaseBrowserClient()

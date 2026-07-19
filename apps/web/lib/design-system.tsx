@@ -62,6 +62,9 @@ const BADGE_MAP: Record<string, { bg: string; text: string; label: string }> = {
   overdue: { bg: T.amberBg, text: T.amber, label: 'Overdue' },
   meal: { bg: '#f0fdf4', text: '#166534', label: 'Meal' },
   workout: { bg: T.blueBg, text: T.blue, label: 'Workout' },
+  message_sent: { bg: T.amberBg, text: T.amber, label: 'Message Sent' },
+  escalated_to_coach: { bg: T.redBg, text: T.red, label: 'Escalated' },
+  resolved: { bg: T.successBg, text: T.success, label: 'Resolved' },
 }
 
 export function Badge({ status, small, labelOverride }: { status: string; small?: boolean; labelOverride?: string }) {

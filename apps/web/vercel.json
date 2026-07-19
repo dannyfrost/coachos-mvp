@@ -4,6 +4,10 @@
     {
       "path": "/api/flash-cards/compute",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/absence/detect",
+      "schedule": "0 */6 * * *"
     }
   ]
 }
