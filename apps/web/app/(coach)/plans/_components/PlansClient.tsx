@@ -25,6 +25,8 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+type PlanFile = { path: string; filename: string; content_type: string; size: number }
+
 function contentToText(content: unknown): string {
   if (content == null) return ''
   if (typeof content === 'object' && content !== null && 'body' in (content as Record<string, unknown>)) {
@@ -32,6 +34,152 @@ function contentToText(content: unknown): string {
     return typeof body === 'string' ? body : ''
   }
   return typeof content === 'string' ? content : ''
+}
+
+function contentFile(content: unknown): PlanFile | null {
+  if (content == null || typeof content !== 'object') return null
+  const file = (content as Record<string, unknown>).file
+  if (file == null || typeof file !== 'object') return null
+  const f = file as Record<string, unknown>
+  if (typeof f.path !== 'string' || typeof f.filename !== 'string') return null
+  return { path: f.path, filename: f.filename, content_type: String(f.content_type ?? ''), size: Number(f.size ?? 0) }
+}
+
+const UPLOAD_ACCEPT = 'application/pdf,image/jpeg,image/png'
+const UPLOAD_MAX_BYTES = 10_485_760
+
+function FileControls({ plan, canUpload, onUpdated }: { plan: PlanRow; canUpload: boolean; onUpdated: (content: unknown) => void }) {
+  const [uploading, setUploading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const file = contentFile(plan.content)
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = e.target.files?.[0]
+    e.target.value = ''
+    if (!selected) return
+
+    if (!['application/pdf', 'image/jpeg', 'image/png'].includes(selected.type)) {
+      setError('File must be a PDF, JPEG, or PNG.')
+      return
+    }
+    if (selected.size > UPLOAD_MAX_BYTES) {
+      setError('File must be 10MB or smaller.')
+      return
+    }
+
+    setUploading(true)
+    setError(null)
+    const supabase = createSupabaseBrowserClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) {
+      setUploading(false)
+      setError('Session expired. Refresh and try again.')
+      return
+    }
+
+    const urlRes = await fetch('/api/plans/upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ plan_id: plan.id, filename: selected.name, content_type: selected.type, size: selected.size }),
+    })
+    if (!urlRes.ok) {
+      setUploading(false)
+      const json = await urlRes.json().catch(() => ({}))
+      setError(json.error ?? 'Could not start upload.')
+      return
+    }
+    const { signed_url, path } = (await urlRes.json()) as { signed_url: string; path: string }
+
+    const putRes = await fetch(signed_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': selected.type },
+      body: selected,
+    })
+    if (!putRes.ok) {
+      setUploading(false)
+      setError('Upload failed. Try again.')
+      return
+    }
+
+    const newFile: PlanFile = { path, filename: selected.name, content_type: selected.type, size: selected.size }
+    const existingBody = contentToText(plan.content)
+    const newContent = { body: existingBody, file: newFile }
+
+    const { error: updateError } = await supabase.from('plans').update({ content: newContent }).eq('id', plan.id)
+    setUploading(false)
+    if (updateError) {
+      setError('File uploaded but could not be linked to the plan.')
+      return
+    }
+    onUpdated(newContent)
+  }
+
+  async function handleDownload() {
+    setDownloading(true)
+    setError(null)
+    const supabase = createSupabaseBrowserClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) {
+      setDownloading(false)
+      setError('Session expired. Refresh and try again.')
+      return
+    }
+
+    const res = await fetch('/api/plans/download-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ plan_id: plan.id }),
+    })
+    setDownloading(false)
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      setError(json.error ?? 'Could not open file.')
+      return
+    }
+    const { signed_url } = (await res.json()) as { signed_url: string }
+    window.open(signed_url, '_blank')
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {file && (
+          <Btn small variant="ghost" onClick={handleDownload} disabled={downloading}>
+            {downloading ? '...' : `📎 ${file.filename}`}
+          </Btn>
+        )}
+        {canUpload && (
+          <label style={{ display: 'inline-block' }}>
+            <input type="file" accept={UPLOAD_ACCEPT} onChange={handleFileSelect} disabled={uploading} style={{ display: 'none' }} />
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '5px 12px',
+                borderRadius: 8,
+                background: T.surfaceHigh,
+                color: T.primary,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: uploading ? 'not-allowed' : 'pointer',
+                opacity: uploading ? 0.5 : 1,
+              }}
+            >
+              {uploading ? 'Uploading…' : file ? 'Replace' : '+ Attach File'}
+            </span>
+          </label>
+        )}
+        {!file && !canUpload && <span style={{ fontSize: 12, color: T.muted }}>No file attached</span>}
+      </div>
+      {error && <p style={{ color: T.red, fontSize: 11, margin: '4px 0 0' }}>{error}</p>}
+    </div>
+  )
 }
 
 function PlanFormModal({
@@ -57,9 +205,11 @@ function PlanFormModal({
     const supabase = createSupabaseBrowserClient()
 
     if (initial) {
+      const existingFile = contentFile(initial.content)
+      const newContent = { body, ...(existingFile ? { file: existingFile } : {}) }
       const { data, error: updateError } = await supabase
         .from('plans')
-        .update({ title, type, content: { body }, is_template: isTemplate, updated_at: new Date().toISOString() })
+        .update({ title, type, content: newContent, is_template: isTemplate, updated_at: new Date().toISOString() })
         .eq('id', initial.id)
         .select()
         .single()
@@ -69,7 +219,7 @@ function PlanFormModal({
         setError(updateError?.message ?? 'Could not save plan.')
         return
       }
-      onSaved({ ...initial, title, type, content: { body }, is_template: isTemplate, updated_at: data.updated_at })
+      onSaved({ ...initial, title, type, content: newContent, is_template: isTemplate, updated_at: data.updated_at })
     } else {
       const {
         data: { user },
@@ -302,6 +452,10 @@ export default function PlansClient({
     setPlans(prev => prev.map(p => (p.id === plan.id ? { ...p, status: 'archived' } : p)))
   }
 
+  function handleFileUpdated(planId: string, content: unknown) {
+    setPlans(prev => prev.map(p => (p.id === planId ? { ...p, content } : p)))
+  }
+
   const selectStyle: React.CSSProperties = {
     padding: '8px 14px',
     borderRadius: 8,
@@ -366,35 +520,38 @@ export default function PlansClient({
             ))}
           </div>
           {filtered.map((p, i) => (
-            <div
-              key={p.id}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '2fr 90px 90px 90px 1fr 1fr',
-                padding: '13px 20px',
-                borderBottom: i < filtered.length - 1 ? `1px solid ${T.border}` : 'none',
-                alignItems: 'center',
-              }}
-            >
-              <span style={{ fontWeight: 600, fontSize: 14, color: T.onSurface }}>{p.title}</span>
-              <Badge status={p.type} small labelOverride={p.type === 'meal' ? 'Meal' : 'Workout'} />
-              <Badge status={p.status} small />
-              <span style={{ fontSize: 13, color: T.muted }}>{p.is_template ? 'Yes' : 'No'}</span>
-              <span style={{ fontSize: 13, color: T.onSurface }}>{fmtDate(p.updated_at)}</span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <Btn small variant="secondary" onClick={() => setAssignPlan(p)} disabled={p.status !== 'active' || activeClients.length === 0}>
-                  Assign
-                </Btn>
-                {isCoach && p.status === 'active' && (
-                  <Btn small variant="secondary" onClick={() => setFormPlan(p)}>
-                    Edit
+            <div key={p.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${T.border}` : 'none' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 90px 90px 90px 1fr 1fr',
+                  padding: '13px 20px 6px',
+                  alignItems: 'center',
+                }}
+              >
+                <span style={{ fontWeight: 600, fontSize: 14, color: T.onSurface }}>{p.title}</span>
+                <Badge status={p.type} small labelOverride={p.type === 'meal' ? 'Meal' : 'Workout'} />
+                <Badge status={p.status} small />
+                <span style={{ fontSize: 13, color: T.muted }}>{p.is_template ? 'Yes' : 'No'}</span>
+                <span style={{ fontSize: 13, color: T.onSurface }}>{fmtDate(p.updated_at)}</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <Btn small variant="secondary" onClick={() => setAssignPlan(p)} disabled={p.status !== 'active' || activeClients.length === 0}>
+                    Assign
                   </Btn>
-                )}
-                {isCoach && p.status === 'active' && (
-                  <Btn small variant="danger" onClick={() => handleArchive(p)}>
-                    Archive
-                  </Btn>
-                )}
+                  {isCoach && p.status === 'active' && (
+                    <Btn small variant="secondary" onClick={() => setFormPlan(p)}>
+                      Edit
+                    </Btn>
+                  )}
+                  {isCoach && p.status === 'active' && (
+                    <Btn small variant="danger" onClick={() => handleArchive(p)}>
+                      Archive
+                    </Btn>
+                  )}
+                </div>
+              </div>
+              <div style={{ padding: '0 20px 13px' }}>
+                <FileControls plan={p} canUpload={isCoach && p.status === 'active'} onUpdated={content => handleFileUpdated(p.id, content)} />
               </div>
             </div>
           ))}
