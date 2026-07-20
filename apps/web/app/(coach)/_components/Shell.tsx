@@ -82,12 +82,25 @@ function SettingsIcon({ active }: IconProps) {
   )
 }
 
+function TeamIcon({ active }: IconProps) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 00-3-3.87" />
+      <path d="M16 3.13a4 4 0 010 7.75" />
+      <circle cx="9" cy="7" r="1" fill={iconStroke(active)} />
+    </svg>
+  )
+}
+
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', href: '/dashboard', Icon: DashboardIcon },
   { id: 'clients', label: 'Clients', href: '/clients', Icon: ClientsIcon },
   { id: 'plans', label: 'Plans', href: '/plans', Icon: PlansIcon },
   { id: 'messages', label: 'Messages', href: '/messages', Icon: MessagesIcon },
   { id: 'alerts', label: 'Alerts', href: '/alerts', Icon: AlertsIcon },
+  { id: 'team', label: 'Team', href: '/team', Icon: TeamIcon },
   { id: 'reports', label: 'Reports', href: '#', Icon: ReportsIcon, soon: true },
   { id: 'settings', label: 'Settings', href: '/settings', Icon: SettingsIcon },
 ]
@@ -118,7 +131,9 @@ export function Shell({
             ? 'Alerts'
             : pathname.startsWith('/settings')
               ? 'Settings'
-              : 'Dashboard'
+              : pathname.startsWith('/team')
+                ? 'Team'
+                : 'Dashboard'
 
   async function handleSignOut() {
     const supabase = createSupabaseBrowserClient()
