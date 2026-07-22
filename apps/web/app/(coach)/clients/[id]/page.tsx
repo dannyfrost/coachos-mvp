@@ -32,6 +32,9 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
     { data: subscription },
     { data: flashCard },
     { data: logs },
+    { data: planAssignments },
+    { data: messages },
+    { data: absenceEvents },
   ] = await Promise.all([
     supabase
       .from('platform_users')
@@ -61,6 +64,25 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
       .eq('client_id', params.id)
       .order('log_date', { ascending: false })
       .limit(30),
+
+    supabase
+      .from('plan_assignments')
+      .select('id, plan_type, status, assigned_at, plans!plan_assignments_plan_id_fkey(title)')
+      .eq('client_id', params.id)
+      .order('assigned_at', { ascending: false }),
+
+    supabase
+      .from('messages')
+      .select('id, sender_id, content, read_at, created_at')
+      .or(`sender_id.eq.${params.id},recipient_id.eq.${params.id}`)
+      .order('created_at', { ascending: false })
+      .limit(50),
+
+    supabase
+      .from('absence_events')
+      .select('id, trigger_date, level, action_taken, created_at, resolved_at')
+      .eq('client_id', params.id)
+      .order('created_at', { ascending: false }),
   ]);
 
   if (!platformUser) redirect('/clients');
@@ -119,6 +141,28 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
       questions: l.questions ?? null,
     })),
     photoUrlMap,
+    planAssignments: (planAssignments ?? []).map((p) => ({
+      id: p.id,
+      title: (p.plans as { title: string } | null)?.title ?? 'Untitled plan',
+      plan_type: p.plan_type,
+      status: p.status as string,
+      assigned_at: p.assigned_at,
+    })),
+    messages: (messages ?? []).map((m) => ({
+      id: m.id,
+      fromClient: m.sender_id === params.id,
+      content: m.content,
+      read_at: m.read_at ?? null,
+      created_at: m.created_at,
+    })),
+    absenceEvents: (absenceEvents ?? []).map((e) => ({
+      id: e.id,
+      trigger_date: e.trigger_date,
+      level: e.level as string,
+      action_taken: e.action_taken as string,
+      created_at: e.created_at,
+      resolved_at: e.resolved_at ?? null,
+    })),
   };
 
   return <ClientProfileClient {...props} />;
