@@ -75,7 +75,7 @@ export default function AlertsClient({ events: initialEvents }: { events: AlertR
   }
 
   return (
-    <div style={{ padding: '24px 28px' }}>
+    <div className="page-pad">
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <select value={levelFilter} onChange={e => setLevelFilter(e.target.value as Level | 'all')} style={selectStyle}>
           {LEVEL_FILTERS.map(l => (

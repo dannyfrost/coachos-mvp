@@ -256,7 +256,7 @@ function PlanFormModal({
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
       <div style={{ background: T.white, borderRadius: 14, boxShadow: shadow.float, width: '100%', maxWidth: 480, padding: 24, maxHeight: '85vh', overflowY: 'auto' }}>
         <h2 style={{ margin: '0 0 16px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>
           {initial ? 'Edit Plan' : 'Create Plan'}
@@ -352,7 +352,7 @@ function AssignModal({
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
       <div style={{ background: T.white, borderRadius: 14, boxShadow: shadow.float, width: '100%', maxWidth: 400, padding: 24 }}>
         <h2 style={{ margin: '0 0 6px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Assign Plan</h2>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: T.muted }}>{plan.title}</p>
@@ -470,7 +470,7 @@ export default function PlansClient({
   }
 
   return (
-    <div style={{ padding: '24px 28px' }}>
+    <div className="page-pad">
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as 'all' | PlanType)} style={selectStyle}>
           <option value="all">All types</option>
@@ -504,10 +504,12 @@ export default function PlansClient({
         <Card style={{ textAlign: 'center', color: T.muted, fontSize: 13, padding: '40px 24px' }}>No plans yet.</Card>
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
+         <div className="table-scroll">
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: '2fr 90px 90px 90px 1fr 1fr',
+              minWidth: 640,
               padding: '10px 20px',
               background: T.surfaceLow,
               borderBottom: `1px solid ${T.border}`,
@@ -520,7 +522,7 @@ export default function PlansClient({
             ))}
           </div>
           {filtered.map((p, i) => (
-            <div key={p.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${T.border}` : 'none' }}>
+            <div key={p.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${T.border}` : 'none', minWidth: 640 }}>
               <div
                 style={{
                   display: 'grid',
@@ -555,6 +557,7 @@ export default function PlansClient({
               </div>
             </div>
           ))}
+         </div>
         </Card>
       )}
 

@@ -27,7 +27,7 @@ export default function MessagesClient({ conversations }: { conversations: Conve
   const filtered = filter === 'unread' ? conversations.filter(c => c.unread_count > 0) : conversations
 
   return (
-    <div style={{ padding: '24px 28px' }}>
+    <div className="page-pad">
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         {(['all', 'unread'] as const).map(f => (
           <button

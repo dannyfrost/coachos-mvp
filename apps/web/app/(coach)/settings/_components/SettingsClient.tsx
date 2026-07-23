@@ -113,7 +113,7 @@ export default function SettingsClient(initial: Props) {
   }
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 560 }}>
+    <div className="page-pad" style={{ maxWidth: 560 }}>
       <form onSubmit={handleSave}>
         <Card style={{ marginBottom: 16 }}>
           <h2 style={{ margin: '0 0 16px', fontFamily: font.heading, fontWeight: 800, fontSize: 16, color: T.onSurface }}>Workspace</h2>
@@ -137,7 +137,7 @@ export default function SettingsClient(initial: Props) {
           <h2 style={{ margin: '0 0 16px', fontFamily: font.heading, fontWeight: 800, fontSize: 16, color: T.onSurface }}>
             Flash Card &amp; Absence Thresholds
           </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 4 }}>
+          <div className="grid-stats" style={{ marginBottom: 4 }}>
             <div>
               <FieldLabel>Warning (days)</FieldLabel>
               <input

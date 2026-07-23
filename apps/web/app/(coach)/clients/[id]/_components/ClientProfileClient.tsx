@@ -163,7 +163,7 @@ export default function ClientProfileClient({
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 28px' }}>
+    <div className="page-pad" style={{ maxWidth: 900, margin: '0 auto' }}>
       <a href="/clients" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: T.primary, fontWeight: 600, fontSize: 13, marginBottom: 18, textDecoration: 'none' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <polyline points="15 18 9 12 15 6" />
@@ -171,7 +171,7 @@ export default function ClientProfileClient({
         Back to Clients
       </a>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20, marginBottom: 20 }}>
+      <div className="profile-header-grid" style={{ marginBottom: 20 }}>
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
             <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>

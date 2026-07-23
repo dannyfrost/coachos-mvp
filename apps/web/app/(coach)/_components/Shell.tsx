@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { T, shadow, font, Avatar, initialsOf } from '../../../lib/design-system'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
@@ -118,6 +119,11 @@ export function Shell({
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  const [navOpen, setNavOpen] = useState(false)
+
+  useEffect(() => {
+    setNavOpen(false)
+  }, [pathname])
 
   const title = pathname.startsWith('/clients/')
     ? 'Client Profile'
@@ -147,6 +153,11 @@ export function Shell({
   return (
     <div style={{ display: 'flex', height: '100vh', background: T.surface, fontFamily: font.body }}>
       <div
+        className={`shell-overlay${navOpen ? ' is-open' : ''}`}
+        onClick={() => setNavOpen(false)}
+      />
+      <div
+        className={`shell-sidebar${navOpen ? ' is-open' : ''}`}
         style={{
           width: 220,
           background: T.surfaceLow,
@@ -254,10 +265,34 @@ export function Shell({
             borderBottom: `1px solid ${T.border}`,
             display: 'flex',
             alignItems: 'center',
+            gap: 14,
             padding: '0 28px',
             flexShrink: 0,
           }}
         >
+          <button
+            className="shell-hamburger"
+            onClick={() => setNavOpen(v => !v)}
+            aria-label="Toggle navigation"
+            style={{
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              padding: 0,
+              margin: '0 -6px 0 -8px',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={T.onSurface} strokeWidth="2.2" strokeLinecap="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
           <h1 style={{ margin: 0, fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>{title}</h1>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>{children}</div>

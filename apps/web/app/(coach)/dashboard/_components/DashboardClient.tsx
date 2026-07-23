@@ -101,7 +101,7 @@ export default function DashboardClient({ flashCards: initialCards, clients, mis
   ]
 
   return (
-    <div style={{ padding: '24px 28px' }}>
+    <div className="page-pad">
       {isTrial && (
         <div
           style={{
@@ -118,7 +118,7 @@ export default function DashboardClient({ flashCards: initialCards, clients, mis
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 14, marginBottom: 24 }}>
+      <div className="grid-stats" style={{ marginBottom: 24 }}>
         {kpis.map(kpi => (
           <Card key={kpi.label} style={{ padding: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>

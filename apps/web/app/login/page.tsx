@@ -41,11 +41,13 @@ export default function LoginPage() {
         minHeight: '100vh',
         background: T.surface,
         fontFamily: font.body,
+        padding: 16,
       }}
     >
       <form
         onSubmit={handleSubmit}
-        style={{ width: 380, padding: '2.5rem', background: T.white, borderRadius: 16, boxShadow: shadow.float }}
+        className="auth-card"
+        style={{ maxWidth: 380, padding: '2.5rem', background: T.white, borderRadius: 16, boxShadow: shadow.float }}
       >
         <div
           style={{

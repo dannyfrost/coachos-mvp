@@ -62,12 +62,13 @@ export default function SignupPage() {
         minHeight: '100vh',
         background: T.surface,
         fontFamily: font.body,
-        padding: '2rem 0',
+        padding: '2rem 16px',
       }}
     >
       <form
         onSubmit={handleSubmit}
-        style={{ width: 400, padding: '2.5rem', background: T.white, borderRadius: 16, boxShadow: shadow.float }}
+        className="auth-card"
+        style={{ maxWidth: 400, padding: '2.5rem', background: T.white, borderRadius: 16, boxShadow: shadow.float }}
       >
         <div
           style={{

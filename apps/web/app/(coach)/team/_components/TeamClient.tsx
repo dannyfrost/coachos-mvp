@@ -70,7 +70,7 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
       <div style={{ background: T.white, borderRadius: 14, boxShadow: shadow.float, width: '100%', maxWidth: 440, padding: 24 }}>
         <h2 style={{ margin: '0 0 16px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Invite Staff</h2>
 
@@ -177,7 +177,7 @@ function ManageClientsModal({
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
       <div style={{ background: T.white, borderRadius: 14, boxShadow: shadow.float, width: '100%', maxWidth: 420, padding: 24 }}>
         <h2 style={{ margin: '0 0 4px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Manage Clients</h2>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: T.muted }}>{staffMember.fullName}</p>
@@ -249,7 +249,7 @@ export default function TeamClient({ staff, activeClients }: { staff: StaffRow[]
   }
 
   return (
-    <div style={{ padding: '24px 28px' }}>
+    <div className="page-pad">
       <div style={{ display: 'flex', marginBottom: 20 }}>
         <Btn onClick={() => setShowInvite(true)} style={{ marginLeft: 'auto' }}>
           + Invite Staff
@@ -266,10 +266,12 @@ export default function TeamClient({ staff, activeClients }: { staff: StaffRow[]
         <Card style={{ textAlign: 'center', color: T.muted, fontSize: 13, padding: '40px 24px' }}>No team members yet.</Card>
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
+         <div className="table-scroll">
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: '2fr 1.3fr 90px 90px 1fr',
+              minWidth: 560,
               padding: '10px 20px',
               background: T.surfaceLow,
               borderBottom: `1px solid ${T.border}`,
@@ -287,6 +289,7 @@ export default function TeamClient({ staff, activeClients }: { staff: StaffRow[]
               style={{
                 display: 'grid',
                 gridTemplateColumns: '2fr 1.3fr 90px 90px 1fr',
+                minWidth: 560,
                 padding: '13px 20px',
                 borderBottom: i < staff.length - 1 ? `1px solid ${T.border}` : 'none',
                 alignItems: 'center',
@@ -309,6 +312,7 @@ export default function TeamClient({ staff, activeClients }: { staff: StaffRow[]
               </div>
             </div>
           ))}
+         </div>
         </Card>
       )}
 

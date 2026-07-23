@@ -123,11 +123,11 @@ export default async function ReportsPage() {
   const absenceTotal = absenceEvents?.length ?? 0
 
   return (
-    <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="page-pad" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Client Health */}
       <div>
         <SectionLabel>Client Health</SectionLabel>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
+        <div className="grid-stats" style={{ marginBottom: 14 }}>
           <StatTile label="Active Clients" value={activeClientCount} color={T.primary} />
           <StatTile label="Checked In Today" value={`${checkedInToday}/${activeClientCount}`} color={T.successMid} />
           <StatTile label="Total Clients" value={totalClientCount} />
@@ -165,7 +165,7 @@ export default async function ReportsPage() {
       {/* Subscriptions */}
       <div>
         <SectionLabel>Subscriptions</SectionLabel>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 14 }}>
+        <div className="grid-stats" style={{ marginBottom: 14 }}>
           <StatTile label="Active" value={subCounts.active} color={T.successMid} />
           <StatTile label="Expired" value={subCounts.expired} color={T.redMid} />
           <StatTile label="Overdue" value={subCounts.overdue} color={T.amberMid} />
@@ -188,7 +188,7 @@ export default async function ReportsPage() {
       {/* Team / Ops */}
       <div>
         <SectionLabel>Team &amp; Ops</SectionLabel>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
+        <div className="grid-stats" style={{ marginBottom: 14 }}>
           <StatTile label="Active Staff" value={activeStaff.length} />
           <StatTile label="Absence Events" value={absenceTotal} />
           <StatTile label="Avg Resolution Time" value={avgResolutionHours !== null ? `${avgResolutionHours}h` : '—'} />
