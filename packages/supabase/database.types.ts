@@ -509,6 +509,61 @@ export type Database = {
           },
         ]
       }
+      meal_entries: {
+        Row: {
+          client_id: string
+          coach_id: string
+          created_at: string
+          description: string | null
+          id: string
+          log_date: string
+          meal_type: Database["public"]["Enums"]["meal_type_enum"]
+          photo_key: string | null
+        }
+        Insert: {
+          client_id: string
+          coach_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          log_date: string
+          meal_type: Database["public"]["Enums"]["meal_type_enum"]
+          photo_key?: string | null
+        }
+        Update: {
+          client_id?: string
+          coach_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          log_date?: string
+          meal_type?: Database["public"]["Enums"]["meal_type_enum"]
+          photo_key?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meal_entries_client_coach_fkey"
+            columns: ["client_id", "coach_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id", "coach_id"]
+          },
+          {
+            foreignKeyName: "meal_entries_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_entries_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "coaches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           coach_id: string
@@ -713,6 +768,41 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      push_tokens: {
+        Row: {
+          created_at: string
+          expo_push_token: string
+          id: string
+          platform: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expo_push_token: string
+          id?: string
+          platform: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expo_push_token?: string
+          id?: string
+          platform?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "platform_users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       role_permissions: {
         Row: {
@@ -1064,6 +1154,7 @@ export type Database = {
       client_subscription_status: "active" | "expired" | "overdue"
       coach_subscription_status: "active" | "past_due" | "cancelled" | "expired"
       flash_status: "green" | "yellow" | "red"
+      meal_type_enum: "breakfast" | "lunch" | "dinner" | "snack"
       plan_assign_status: "active" | "completed" | "replaced"
       plan_status: "active" | "archived"
       plan_type_enum: "meal" | "workout"
@@ -1219,6 +1310,7 @@ export const Constants = {
       client_subscription_status: ["active", "expired", "overdue"],
       coach_subscription_status: ["active", "past_due", "cancelled", "expired"],
       flash_status: ["green", "yellow", "red"],
+      meal_type_enum: ["breakfast", "lunch", "dinner", "snack"],
       plan_assign_status: ["active", "completed", "replaced"],
       plan_status: ["active", "archived"],
       plan_type_enum: ["meal", "workout"],

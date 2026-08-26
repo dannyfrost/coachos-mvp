@@ -35,6 +35,7 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
     { data: planAssignments },
     { data: messages },
     { data: absenceEvents },
+    { data: mealEntries },
   ] = await Promise.all([
     supabase
       .from('platform_users')
@@ -83,13 +84,22 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
       .select('id, trigger_date, level, action_taken, created_at, resolved_at')
       .eq('client_id', params.id)
       .order('created_at', { ascending: false }),
+
+    supabase
+      .from('meal_entries')
+      .select('id, log_date, meal_type, description, photo_key')
+      .eq('client_id', params.id)
+      .order('log_date', { ascending: false })
+      .limit(60),
   ]);
 
   if (!platformUser) redirect('/clients');
 
-  const photoKeys = (logs ?? [])
-    .map((l) => l.meal_photo_key)
-    .filter((k): k is string => k !== null && k !== undefined);
+  const logPhotoKeys = (logs ?? []).map((l) => l.meal_photo_key);
+  const mealPhotoKeys = (mealEntries ?? []).map((m) => m.photo_key);
+  const photoKeys = [...logPhotoKeys, ...mealPhotoKeys].filter(
+    (k): k is string => k !== null && k !== undefined
+  );
 
   const photoUrlMap: Record<string, string> = {};
 
@@ -162,6 +172,13 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
       action_taken: e.action_taken as string,
       created_at: e.created_at,
       resolved_at: e.resolved_at ?? null,
+    })),
+    mealEntries: (mealEntries ?? []).map((m) => ({
+      id: m.id,
+      log_date: m.log_date,
+      meal_type: m.meal_type,
+      description: m.description ?? null,
+      photo_key: m.photo_key ?? null,
     })),
   };
 

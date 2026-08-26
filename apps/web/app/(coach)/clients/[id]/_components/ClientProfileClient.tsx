@@ -64,6 +64,14 @@ type AbsenceEventData = {
   resolved_at: string | null
 }
 
+type MealEntryData = {
+  id: string
+  log_date: string
+  meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack'
+  description: string | null
+  photo_key: string | null
+}
+
 export type ClientProfileClientProps = {
   clientId: string
   clientCreatedAt: string
@@ -76,6 +84,7 @@ export type ClientProfileClientProps = {
   planAssignments: PlanAssignmentData[]
   messages: MessageData[]
   absenceEvents: AbsenceEventData[]
+  mealEntries: MealEntryData[]
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -112,6 +121,7 @@ export default function ClientProfileClient({
   planAssignments,
   messages,
   absenceEvents,
+  mealEntries,
 }: ClientProfileClientProps) {
   const [displayStatus, setDisplayStatus] = useState<UserStatus>(platformUser.status as UserStatus)
   const [actionLoading, setActionLoading] = useState(false)
@@ -124,7 +134,7 @@ export default function ClientProfileClient({
 
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'report'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'meals' | 'report'>('overview')
 
   async function handlePause() {
     setActionLoading(true)
@@ -161,6 +171,22 @@ export default function ClientProfileClient({
       setTimeout(() => setNotesSaved(false), 2000)
     }
   }
+
+  const MEAL_ORDER = ['breakfast', 'lunch', 'dinner', 'snack'] as const
+  const MEAL_LABELS: Record<string, string> = {
+    breakfast: 'Breakfast',
+    lunch: 'Lunch',
+    dinner: 'Dinner',
+    snack: 'Snack',
+  }
+
+  const groupedMealsByDate = (mealEntries ?? []).reduce<Record<string, MealEntryData[]>>((acc, entry) => {
+    if (!acc[entry.log_date]) acc[entry.log_date] = []
+    acc[entry.log_date].push(entry)
+    return acc
+  }, {})
+
+  const sortedMealDates = Object.keys(groupedMealsByDate).sort((a, b) => b.localeCompare(a))
 
   return (
     <div className="page-pad" style={{ maxWidth: 900, margin: '0 auto' }}>
@@ -263,7 +289,7 @@ export default function ClientProfileClient({
       </div>
 
       <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${T.border}`, marginBottom: 18 }}>
-        {(['overview', 'report'] as const).map(tab => (
+        {(['overview', 'meals', 'report'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -280,7 +306,7 @@ export default function ClientProfileClient({
               marginBottom: -1,
             }}
           >
-            {tab === 'overview' ? 'Overview' : 'Report'}
+            {tab === 'overview' ? 'Overview' : tab === 'meals' ? 'Meals' : 'Report'}
           </button>
         ))}
       </div>
@@ -318,6 +344,69 @@ export default function ClientProfileClient({
                     {log.questions && (
                       <p style={{ margin: '6px 0 0', fontSize: 12, color: T.muted, fontStyle: 'italic' }}>{truncate(log.questions, 160)}</p>
                     )}
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'meals' && (
+        <>
+          <SectionHeader>Meal Entries Timeline</SectionHeader>
+          {sortedMealDates.length === 0 ? (
+            <Card style={{ color: T.muted, fontSize: 13 }}>No meal entries recorded yet.</Card>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {sortedMealDates.map(date => {
+                const dayEntries = groupedMealsByDate[date] ?? []
+                return (
+                  <Card key={date} style={{ padding: '16px 20px' }}>
+                    <div style={{ fontFamily: font.heading, fontWeight: 700, fontSize: 14, color: T.onSurface, marginBottom: 12 }}>
+                      {fmtLogDate(date)}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {MEAL_ORDER.map(mType => {
+                        const entry = dayEntries.find(e => e.meal_type === mType)
+                        if (!entry) return null
+                        const photoUrl = entry.photo_key ? photoUrlMap[entry.photo_key] : undefined
+                        return (
+                          <div
+                            key={mType}
+                            style={{
+                              padding: '10px 14px',
+                              background: T.surfaceLow,
+                              borderRadius: 8,
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'flex-start',
+                              gap: 12,
+                            }}
+                          >
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                                {MEAL_LABELS[mType]}
+                              </div>
+                              <p style={{ margin: 0, fontSize: 13, color: T.onSurfaceVar, lineHeight: 1.5 }}>
+                                {entry.description ? truncate(entry.description, 300) : <span style={{ color: T.muted, fontStyle: 'italic' }}>No description</span>}
+                              </p>
+                            </div>
+                            {photoUrl && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={photoUrl}
+                                alt={`${MEAL_LABELS[mType]} photo`}
+                                width={48}
+                                height={48}
+                                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}
+                                onClick={() => setLightboxUrl(photoUrl)}
+                              />
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </Card>
                 )
               })}

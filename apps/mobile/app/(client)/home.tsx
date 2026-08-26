@@ -12,6 +12,8 @@ import {
   Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 
@@ -123,6 +125,44 @@ export default function HomeScreen() {
     const uid = sess.user.id;
     setUserId(uid);
     setSession({ access_token: sess.access_token });
+
+    // Non-blocking, silent push token registration
+    (async () => {
+      try {
+        if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== 'granted') return;
+
+        const projectId =
+          Constants?.expoConfig?.extra?.eas?.projectId ??
+          Constants?.easConfig?.projectId;
+
+        const tokenData = await Notifications.getExpoPushTokenAsync(
+          projectId ? { projectId } : undefined
+        );
+
+        if (tokenData?.data) {
+          await fetch(`${API_BASE}/api/push/register`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${sess.access_token}`,
+            },
+            body: JSON.stringify({
+              expo_push_token: tokenData.data,
+              platform: Platform.OS,
+            }),
+          });
+        }
+      } catch {
+        // Silently ignore push registration failures (e.g. before EAS project is configured)
+      }
+    })();
 
     const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -336,7 +376,32 @@ export default function HomeScreen() {
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.heading}>Today's Log</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.heading}>Today's Log</Text>
+          <View style={styles.headerLinks}>
+            <TouchableOpacity
+              onPress={() => router.push('/meals')}
+              accessibilityRole="button"
+              accessibilityLabel="View and log meals"
+            >
+              <Text style={styles.reportLink}>Meals</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/report')}
+              accessibilityRole="button"
+              accessibilityLabel="View my progress report"
+            >
+              <Text style={styles.reportLink}>My Progress</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/settings')}
+              accessibilityRole="button"
+              accessibilityLabel="View settings"
+            >
+              <Text style={styles.reportLink}>Settings</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {fetchError && (
           <View style={styles.errorBanner}>
@@ -481,11 +546,26 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingTop: 56,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  headerLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   heading: {
     fontSize: 22,
     fontWeight: '700',
     color: '#111',
-    marginBottom: 20,
+  },
+  reportLink: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a56db',
   },
   loadingIndicator: {
     marginTop: 40,
