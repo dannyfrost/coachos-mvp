@@ -12,15 +12,26 @@
     "orientation": "portrait",
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      "expo-image-picker",
+      "expo-notifications"
     ],
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.coachos.app"
     },
     "android": {
+      "package": "com.coachos.app",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       }
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f2b1203c-0a90-4d4a-99e5-8d7a16546a20"
+      }
+    },
+    "owner": "silver-shadow"
   }
 }
