@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
+import { T } from '../lib/design-system';
 
 export default function Index() {
   const [loading, setLoading] = useState(true);
@@ -19,7 +20,7 @@ export default function Index() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#111" />
+        <ActivityIndicator size="large" color={T.primary} />
       </View>
     );
   }
@@ -36,6 +37,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: T.surface,
   },
 });

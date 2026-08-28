@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,61 @@ import {
   Platform,
   StyleSheet,
   Image,
+  Modal,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
+import {
+  T,
+  fontFamily,
+  Card,
+  FieldLabel,
+  SectionLabel,
+  Btn,
+  Avatar,
+  initialsOf,
+  inputStyle,
+  cardShadow,
+} from '../../lib/design-system';
+import {
+  Chip,
+  IconFlame,
+  IconCheck,
+  IconKey,
+} from '../../lib/icons';
+import {
+  computeStreak,
+  getTodayISO,
+  getYesterdayISO,
+} from '../../lib/stats';
+import CompletionRing from '../../components/CompletionRing';
+
+type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+const MEAL_OPTIONS: { type: MealType; label: string }[] = [
+  { type: 'breakfast', label: 'Breakfast' },
+  { type: 'lunch', label: 'Lunch' },
+  { type: 'dinner', label: 'Dinner' },
+  { type: 'snack', label: 'Snack' },
+];
+
+type MealEntryState = {
+  description: string;
+  photoUri: string | null;
+  photoKey: string | null;
+  existingPhotoKey: string | null;
+};
 
 type DailyLogRow = {
   client_id: string;
@@ -23,20 +72,26 @@ type DailyLogRow = {
   created_at: string;
   id: string;
   log_date: string;
-  meal_description: string | null;
-  meal_photo_key: string | null;
   questions: string | null;
   steps: number | null;
   weight: number | null;
 };
+
+type MessagePreview = {
+  id: string;
+  content: string;
+  sender_id: string;
+  recipient_id: string;
+  created_at: string;
+  read_at: string | null;
+};
+
 type UserStatus = 'pending' | 'active' | 'paused' | 'suspended' | 'banned' | 'deactivated';
 type SubStatus = 'active' | 'expired' | 'overdue';
 
 type TodayLogArgs = {
   p_steps?: number;
   p_weight?: number;
-  p_meal_description?: string;
-  p_meal_photo_key?: string;
   p_questions?: string;
 };
 
@@ -45,12 +100,13 @@ const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 function getBanner(
   userStatus: UserStatus | null,
   subStatus: SubStatus | null,
-): { text: string; color: string } | null {
+): { text: string; bg: string; color: string } | null {
   if (!userStatus) return null;
   if (userStatus === 'paused') {
     return {
       text: 'Your account is paused. Contact your coach to resume.',
-      color: '#FFF3CD',
+      bg: T.amberBg,
+      color: T.amber,
     };
   }
   if (
@@ -60,13 +116,15 @@ function getBanner(
   ) {
     return {
       text: 'Your account is not active. Contact your coach.',
-      color: '#F8D7DA',
+      bg: T.redBg,
+      color: T.red,
     };
   }
   if (subStatus === 'expired' || subStatus === 'overdue') {
     return {
       text: 'Your subscription has expired. Contact your coach.',
-      color: '#F8D7DA',
+      bg: T.redBg,
+      color: T.red,
     };
   }
   return null;
@@ -88,27 +146,64 @@ function isSubmitBlocked(
   return false;
 }
 
+function fmtMessageTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
 export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
 
+  const [clientFullName, setClientFullName] = useState('');
+  const [coachName, setCoachName] = useState('Coach');
+  const [coachInitials, setCoachInitials] = useState('C');
   const [userStatus, setUserStatus] = useState<UserStatus | null>(null);
   const [subStatus, setSubStatus] = useState<SubStatus | null>(null);
   const [coachId, setCoachId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [session, setSession] = useState<{ access_token: string } | null>(null);
 
+  const [todayLog, setTodayLog] = useState<DailyLogRow | null>(null);
+  const [yesterdayLog, setYesterdayLog] = useState<DailyLogRow | null>(null);
+  const [streak, setStreak] = useState(0);
+  const [latestMessage, setLatestMessage] = useState<MessagePreview | null>(null);
+
   const [steps, setSteps] = useState('');
   const [weight, setWeight] = useState('');
-  const [mealDescription, setMealDescription] = useState('');
   const [questions, setQuestions] = useState('');
+
+  // Meal state for Today's Log quick-add
+  const [selectedMealType, setSelectedMealType] = useState<MealType | null>(null);
+  const [mealDescription, setMealDescription] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoKey, setPhotoKey] = useState<string | null>(null);
   const [existingPhotoKey, setExistingPhotoKey] = useState<string | null>(null);
+  const [pickerModalVisible, setPickerModalVisible] = useState(false);
+  const [pendingMealType, setPendingMealType] = useState<MealType | null>(null);
+
+  const [mealEntries, setMealEntries] = useState<Record<MealType, MealEntryState>>({
+    breakfast: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    lunch: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    dinner: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    snack: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+  });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  // Field input refs for checklist scroll / focus
+  const scrollViewRef = useRef<ScrollView>(null);
+  const stepsInputRef = useRef<TextInput>(null);
+  const weightInputRef = useRef<TextInput>(null);
+  const mealInputRef = useRef<TextInput>(null);
+  const questionsInputRef = useRef<TextInput>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -160,57 +255,138 @@ export default function HomeScreen() {
           });
         }
       } catch {
-        // Silently ignore push registration failures (e.g. before EAS project is configured)
+        // Silently ignore push registration failures
       }
     })();
 
-    const todayISO = new Date().toISOString().slice(0, 10);
+    const todayISO = getTodayISO();
+    const yesterdayISO = getYesterdayISO(todayISO);
 
     try {
-      const [logResult, puResult, subResult, clientResult] = await Promise.all([
+      const [
+        logsResult,
+        puResult,
+        subResult,
+        clientResult,
+        mealsResult,
+        unreadResult,
+        latestMsgResult,
+      ] = await Promise.all([
         supabase
           .from('daily_logs')
-          .select('*')
-          .eq('log_date', todayISO)
-          .maybeSingle(),
+          .select('client_id, coach_id, created_at, id, log_date, questions, steps, weight')
+          .eq('client_id', uid)
+          .order('log_date', { ascending: false })
+          .limit(30),
         supabase
           .from('platform_users')
-          .select('status')
+          .select('full_name, status')
           .eq('id', uid)
           .single(),
         supabase
           .from('client_subscriptions')
           .select('status')
-          .eq('id', uid)
+          .eq('client_id', uid)
+          .order('start_date', { ascending: false })
+          .limit(1)
           .maybeSingle(),
         supabase
           .from('clients')
           .select('coach_id')
           .eq('id', uid)
           .single(),
+        supabase
+          .from('meal_entries')
+          .select('id, meal_type, description, photo_key')
+          .eq('client_id', uid)
+          .eq('log_date', todayISO),
+        supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('recipient_id', uid)
+          .is('read_at', null),
+        supabase
+          .from('messages')
+          .select('id, content, sender_id, recipient_id, created_at, read_at')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
-      if (logResult.error || puResult.error || clientResult.error) {
+      if (logsResult.error || puResult.error || clientResult.error || mealsResult.error) {
         setFetchError(true);
       }
 
-      const log = logResult.data as DailyLogRow | null;
-      if (log) {
-        setSteps(log.steps !== null ? String(log.steps) : '');
-        setWeight(log.weight !== null ? log.weight.toFixed(1) : '');
-        setMealDescription(log.meal_description ?? '');
-        setQuestions(log.questions ?? '');
-        setExistingPhotoKey(log.meal_photo_key ?? null);
+      if (typeof unreadResult.count === 'number') {
+        setUnreadCount(unreadResult.count);
+      }
+
+      const allLogs = (logsResult.data ?? []) as DailyLogRow[];
+      const todayRow = allLogs.find((l) => l.log_date === todayISO) ?? null;
+      const yesterdayRow = allLogs.find((l) => l.log_date === yesterdayISO) ?? null;
+
+      setTodayLog(todayRow);
+      setYesterdayLog(yesterdayRow);
+
+      const computedStreak = computeStreak(
+        allLogs.map((l) => l.log_date),
+        todayISO
+      );
+      setStreak(computedStreak);
+
+      if (todayRow) {
+        setSteps(todayRow.steps !== null ? String(todayRow.steps) : '');
+        setWeight(todayRow.weight !== null ? todayRow.weight.toFixed(1) : '');
+        setQuestions(todayRow.questions ?? '');
       }
 
       if (puResult.data) {
+        setClientFullName(puResult.data.full_name ?? '');
         setUserStatus(puResult.data.status as UserStatus);
       }
       if (subResult.data) {
         setSubStatus(subResult.data.status as SubStatus);
       }
-      if (clientResult.data) {
-        setCoachId(clientResult.data.coach_id);
+      if (clientResult.data?.coach_id) {
+        const cId = clientResult.data.coach_id;
+        setCoachId(cId);
+
+        // Fetch coach full name
+        const { data: coachData } = await supabase
+          .from('platform_users')
+          .select('full_name')
+          .eq('id', cId)
+          .single();
+
+        if (coachData?.full_name) {
+          setCoachName(coachData.full_name);
+          setCoachInitials(initialsOf(coachData.full_name));
+        }
+      }
+
+      if (latestMsgResult.data) {
+        setLatestMessage(latestMsgResult.data as MessagePreview);
+      }
+
+      if (mealsResult.data) {
+        const loadedMap: Record<MealType, MealEntryState> = {
+          breakfast: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          lunch: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          dinner: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          snack: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+        };
+        for (const row of mealsResult.data) {
+          const mType = row.meal_type as MealType;
+          if (loadedMap[mType]) {
+            loadedMap[mType] = {
+              description: row.description ?? '',
+              photoUri: null,
+              photoKey: row.photo_key ?? null,
+              existingPhotoKey: row.photo_key ?? null,
+            };
+          }
+        }
+        setMealEntries(loadedMap);
       }
     } catch {
       setFetchError(true);
@@ -223,6 +399,69 @@ export default function HomeScreen() {
     loadData();
   }, [loadData]);
 
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      (async () => {
+        try {
+          const supabase = createMobileSupabaseClient();
+          const {
+            data: { session: sess },
+          } = await supabase.auth.getSession();
+          if (!sess?.user?.id || !isMounted) return;
+
+          const [{ count }, { data: latestMsg }] = await Promise.all([
+            supabase
+              .from('messages')
+              .select('*', { count: 'exact', head: true })
+              .eq('recipient_id', sess.user.id)
+              .is('read_at', null),
+            supabase
+              .from('messages')
+              .select('id, content, sender_id, recipient_id, created_at, read_at')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle(),
+          ]);
+
+          if (isMounted) {
+            if (typeof count === 'number') {
+              setUnreadCount(count);
+            }
+            if (latestMsg) {
+              setLatestMessage(latestMsg as MessagePreview);
+            }
+          }
+        } catch {
+          // Silently ignore background badge refresh errors
+        }
+      })();
+
+      return () => {
+        isMounted = false;
+      };
+    }, [])
+  );
+
+  const handleMealTypeChange = (type: MealType | null) => {
+    setSelectedMealType(type);
+    setSubmitSuccess(false);
+    setSubmitError(null);
+
+    if (!type) {
+      setMealDescription('');
+      setPhotoUri(null);
+      setPhotoKey(null);
+      setExistingPhotoKey(null);
+    } else {
+      const entry = mealEntries[type];
+      setMealDescription(entry?.description ?? '');
+      setPhotoUri(entry?.photoUri ?? null);
+      setPhotoKey(entry?.photoKey ?? null);
+      setExistingPhotoKey(entry?.existingPhotoKey ?? null);
+    }
+  };
+
   const handlePickPhoto = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -230,14 +469,39 @@ export default function HomeScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
+      const uri = result.assets[0].uri;
+      setPhotoUri(uri);
       setPhotoKey(null);
+      setSubmitSuccess(false);
+      if (selectedMealType) {
+        setMealEntries((prev) => ({
+          ...prev,
+          [selectedMealType]: {
+            ...prev[selectedMealType],
+            photoUri: uri,
+            photoKey: null,
+          },
+        }));
+      }
     }
   };
 
   const handleRemovePhoto = () => {
     setPhotoUri(null);
     setPhotoKey(null);
+    setExistingPhotoKey(null);
+    setSubmitSuccess(false);
+    if (selectedMealType) {
+      setMealEntries((prev) => ({
+        ...prev,
+        [selectedMealType]: {
+          ...prev[selectedMealType],
+          photoUri: null,
+          photoKey: null,
+          existingPhotoKey: null,
+        },
+      }));
+    }
   };
 
   const handleSubmit = async () => {
@@ -287,13 +551,25 @@ export default function HomeScreen() {
       return;
     }
 
+    const hasMealContent =
+      mealDescription.trim().length > 0 ||
+      !!photoUri ||
+      !!photoKey ||
+      !!existingPhotoKey;
+
+    if (hasMealContent && !selectedMealType) {
+      setSubmitError('Select which meal this is before saving.');
+      return;
+    }
+
     setSubmitting(true);
-    let finalPhotoKey: string | null = photoKey;
+    let finalPhotoKey: string | null = photoKey ?? existingPhotoKey;
 
     try {
-      if (photoUri && !photoKey) {
+      if (selectedMealType && photoUri && !photoKey) {
         if (!coachId || !userId || !session) {
           setSubmitError('Photo upload failed. Try again or remove the photo.');
+          setSubmitting(false);
           return;
         }
 
@@ -303,7 +579,7 @@ export default function HomeScreen() {
         const imageBlob = await fetch(photoUri).then((r) => r.blob());
         const size = imageBlob.size;
 
-        const filename = `${Date.now()}.${ext}`;
+        const filename = `${Date.now()}_${selectedMealType}.${ext}`;
         const path = `${coachId}/${userId}/${filename}`;
 
         const urlRes = await fetch(`${API_BASE}/api/storage/signed-upload-url`, {
@@ -317,13 +593,13 @@ export default function HomeScreen() {
 
         if (!urlRes.ok) {
           setSubmitError('Photo upload failed. Try again or remove the photo.');
+          setSubmitting(false);
           return;
         }
 
         const { signed_url, path: confirmedPath } = (await urlRes.json()) as {
           signed_url: string;
           path: string;
-          expires_in: null;
         };
 
         const putRes = await fetch(signed_url, {
@@ -334,35 +610,268 @@ export default function HomeScreen() {
 
         if (!putRes.ok) {
           setSubmitError('Photo upload failed. Try again or remove the photo.');
+          setSubmitting(false);
           return;
         }
 
-        setPhotoKey(confirmedPath);
         finalPhotoKey = confirmedPath;
+        setPhotoKey(confirmedPath);
       }
 
       const supabase = createMobileSupabaseClient();
+      const todayISO = getTodayISO();
+
       const args: TodayLogArgs = {};
       if (parsedSteps !== null) args.p_steps = parsedSteps;
       if (parsedWeight !== null) args.p_weight = parsedWeight;
-      if (mealDescription.trim()) args.p_meal_description = mealDescription.trim();
-      if (finalPhotoKey) args.p_meal_photo_key = finalPhotoKey;
-      else if (existingPhotoKey) args.p_meal_photo_key = existingPhotoKey;
       if (questions.trim()) args.p_questions = questions.trim();
 
+      let dailyLogSuccess = false;
+      let mealSuccess = false;
+
       const { error: rpcError } = await supabase.rpc('update_today_log', args);
-      if (rpcError) {
-        setSubmitError('Could not save your log. Check your connection and try again.');
-        return;
+      if (!rpcError) {
+        dailyLogSuccess = true;
+        setTodayLog((prev) => ({
+          ...(prev ?? {
+            client_id: userId ?? '',
+            coach_id: coachId ?? '',
+            created_at: new Date().toISOString(),
+            id: '',
+            log_date: todayISO,
+            questions: null,
+            steps: null,
+            weight: null,
+          }),
+          weight: parsedWeight,
+          steps: parsedSteps,
+          questions: questions.trim() || null,
+        }));
       }
 
-      setSubmitSuccess(true);
+      if (selectedMealType && userId && coachId) {
+        const { error: upsertError } = await supabase
+          .from('meal_entries')
+          .upsert(
+            {
+              client_id: userId,
+              coach_id: coachId,
+              log_date: todayISO,
+              meal_type: selectedMealType,
+              description: mealDescription.trim() || null,
+              photo_key: finalPhotoKey,
+            },
+            { onConflict: 'client_id,log_date,meal_type' }
+          );
+
+        if (!upsertError) {
+          mealSuccess = true;
+          setPhotoKey(finalPhotoKey);
+          setExistingPhotoKey(finalPhotoKey);
+          setPhotoUri(null);
+          setMealEntries((prev) => ({
+            ...prev,
+            [selectedMealType]: {
+              description: mealDescription.trim(),
+              photoUri: null,
+              photoKey: finalPhotoKey,
+              existingPhotoKey: finalPhotoKey,
+            },
+          }));
+        }
+      }
+
+      if (selectedMealType) {
+        if (dailyLogSuccess && mealSuccess) {
+          setSubmitSuccess(true);
+          // Refresh today log in background for summary cards
+          loadData();
+        } else if (dailyLogSuccess && !mealSuccess) {
+          setSubmitError(
+            'Steps and weight saved, but the meal could not be saved. Try again.'
+          );
+        } else if (!dailyLogSuccess && mealSuccess) {
+          setSubmitError(
+            'Meal saved, but steps and weight could not be saved. Try again.'
+          );
+        } else {
+          setSubmitError(
+            'Could not save your log. Check your connection and try again.'
+          );
+        }
+      } else {
+        if (dailyLogSuccess) {
+          setSubmitSuccess(true);
+          // Refresh today log in background for summary cards
+          loadData();
+        } else {
+          setSubmitError(
+            'Could not save your log. Check your connection and try again.'
+          );
+        }
+      }
     } catch {
-      setSubmitError('Could not save your log. Check your connection and try again.');
+      setSubmitError(
+        'Could not save your log. Check your connection and try again.'
+      );
     } finally {
       setSubmitting(false);
     }
   };
+
+  // ── Derived completion states for Checklist ──
+  const weightDone =
+    todayLog?.weight !== null || (weight.trim().length > 0 && submitSuccess);
+  const stepsDone =
+    todayLog?.steps !== null || (steps.trim().length > 0 && submitSuccess);
+  const mealsDone =
+    Object.values(mealEntries).some((m) => m.description.trim().length > 0) ||
+    (mealDescription.trim().length > 0 && submitSuccess);
+  const photoDone =
+    Object.values(mealEntries).some(
+      (m) => !!m.photoKey || !!m.existingPhotoKey || !!m.photoUri
+    ) ||
+    !!photoKey ||
+    !!photoUri ||
+    !!existingPhotoKey;
+
+  const tasks: {
+    id: string;
+    label: string;
+    iconKey: IconKey;
+    done: boolean;
+    optional: boolean;
+    chipBg: string;
+    chipColor: string;
+    onTap: () => void;
+  }[] = [
+    {
+      id: 'weight',
+      label: 'Log Weight',
+      iconKey: 'scale',
+      done: weightDone,
+      optional: false,
+      chipBg: '#e8f1fb',
+      chipColor: T.primary,
+      onTap: () => {
+        weightInputRef.current?.focus();
+      },
+    },
+    {
+      id: 'steps',
+      label: 'Log Steps',
+      iconKey: 'steps',
+      done: stepsDone,
+      optional: false,
+      chipBg: T.successBg,
+      chipColor: T.success,
+      onTap: () => {
+        stepsInputRef.current?.focus();
+      },
+    },
+    {
+      id: 'meals',
+      label: 'Describe Meals',
+      iconKey: 'utensils',
+      done: mealsDone,
+      optional: false,
+      chipBg: T.amberBg,
+      chipColor: T.amber,
+      onTap: () => {
+        mealInputRef.current?.focus();
+      },
+    },
+    {
+      id: 'photo',
+      label: 'Meal Photo',
+      iconKey: 'camera',
+      done: photoDone,
+      optional: true,
+      chipBg: T.surfaceLow,
+      chipColor: T.onSurfaceVar,
+      onTap: () => {
+        handlePickPhoto();
+      },
+    },
+  ];
+
+  const doneCount = tasks.filter((t) => t.done).length;
+  const allTasksDone = doneCount === tasks.length;
+
+  const [collapsed, setCollapsed] = useState(false);
+  const hasUserToggledRef = useRef(false);
+  const initialCollapseSetRef = useRef(false);
+
+  useEffect(() => {
+    if (!loading && !initialCollapseSetRef.current) {
+      initialCollapseSetRef.current = true;
+      if (!hasUserToggledRef.current && allTasksDone) {
+        setCollapsed(true);
+      }
+    }
+  }, [loading, allTasksDone]);
+
+  const toggleCollapsed = () => {
+    hasUserToggledRef.current = true;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setCollapsed((prev) => !prev);
+  };
+
+  // ── Greeting calculations ──
+  const hour = new Date().getHours();
+  const greetingText =
+    hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const clientFirstName = clientFullName
+    ? clientFullName.trim().split(' ')[0]
+    : 'there';
+  const todayFormattedDate = new Date().toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+
+  const greetGradColors =
+    hour < 12
+      ? (['rgba(232,241,251,0.9)', 'rgba(247,249,251,0)'] as const)
+      : hour < 17
+      ? (['rgba(254,243,199,0.55)', 'rgba(247,249,251,0)'] as const)
+      : (['rgba(237,233,254,0.6)', 'rgba(247,249,251,0)'] as const);
+
+  // ── Stats row weight & steps delta calculations ──
+  const currentWeightVal =
+    todayLog?.weight ?? (weight.trim() ? parseFloat(weight) : null);
+  const yesterdayWeightVal = yesterdayLog?.weight ?? null;
+  let weightDeltaText = 'No prev log';
+  let weightDeltaIsGood = true;
+  if (currentWeightVal !== null && yesterdayWeightVal !== null) {
+    const diff = currentWeightVal - yesterdayWeightVal;
+    if (diff === 0) {
+      weightDeltaText = '0.0 kg today';
+      weightDeltaIsGood = true;
+    } else if (diff < 0) {
+      weightDeltaText = `−${Math.abs(diff).toFixed(1)} kg today`;
+      weightDeltaIsGood = true;
+    } else {
+      weightDeltaText = `+${diff.toFixed(1)} kg today`;
+      weightDeltaIsGood = false;
+    }
+  }
+
+  const currentStepsVal =
+    todayLog?.steps ?? (steps.trim() ? parseInt(steps, 10) : null);
+  const yesterdayStepsVal = yesterdayLog?.steps ?? null;
+  let stepsDeltaText = 'No prev log';
+  let stepsDeltaIsGood = true;
+  if (currentStepsVal !== null && yesterdayStepsVal !== null) {
+    const diff = currentStepsVal - yesterdayStepsVal;
+    if (diff >= 0) {
+      stepsDeltaText = `+${diff.toLocaleString()} today`;
+      stepsDeltaIsGood = true;
+    } else {
+      stepsDeltaText = `−${Math.abs(diff).toLocaleString()} today`;
+      stepsDeltaIsGood = false;
+    }
+  }
 
   const banner = getBanner(userStatus, subStatus);
   const blocked = isSubmitBlocked(userStatus, subStatus);
@@ -370,38 +879,56 @@ export default function HomeScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: '#fff' }}
+      style={{ flex: 1, backgroundColor: T.surface }}
     >
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.headerRow}>
-          <Text style={styles.heading}>Today's Log</Text>
-          <View style={styles.headerLinks}>
-            <TouchableOpacity
-              onPress={() => router.push('/meals')}
-              accessibilityRole="button"
-              accessibilityLabel="View and log meals"
-            >
-              <Text style={styles.reportLink}>Meals</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => router.push('/report')}
-              accessibilityRole="button"
-              accessibilityLabel="View my progress report"
-            >
-              <Text style={styles.reportLink}>My Progress</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => router.push('/settings')}
-              accessibilityRole="button"
-              accessibilityLabel="View settings"
-            >
-              <Text style={styles.reportLink}>Settings</Text>
-            </TouchableOpacity>
+        {/* ── Greeting Header ── */}
+        <LinearGradient
+          colors={greetGradColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.greetingHeader}
+        >
+          <View style={styles.greetingLeft}>
+            <Text style={styles.greetingSub}>{greetingText}</Text>
+            <Text style={styles.greetingName}>{clientFirstName}</Text>
+            <Text style={styles.greetingDate}>{todayFormattedDate}</Text>
           </View>
-        </View>
+          <View style={styles.greetingRight}>
+            <TouchableOpacity
+              onPress={() => router.push('/messages')}
+              accessibilityRole="button"
+              accessibilityLabel={
+                unreadCount > 0
+                  ? `View messages, ${unreadCount} unread`
+                  : 'View messages'
+              }
+              style={styles.topMessageBtn}
+            >
+              <Avatar
+                initials={clientFullName ? initialsOf(clientFullName) : 'ME'}
+                size={40}
+              />
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadBadgeText}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <View style={styles.streakBadge}>
+              <IconFlame size={12} color={T.amberMid} />
+              <Text style={styles.streakBadgeText}>
+                {streak} day streak
+              </Text>
+            </View>
+          </View>
+        </LinearGradient>
 
         {fetchError && (
           <View style={styles.errorBanner}>
@@ -412,123 +939,509 @@ export default function HomeScreen() {
         )}
 
         {banner && (
-          <View style={[styles.statusBanner, { backgroundColor: banner.color }]}>
-            <Text style={styles.statusBannerText}>{banner.text}</Text>
+          <View style={[styles.statusBanner, { backgroundColor: banner.bg }]}>
+            <Text style={[styles.statusBannerText, { color: banner.color }]}>
+              {banner.text}
+            </Text>
           </View>
         )}
 
         {loading ? (
-          <ActivityIndicator size="large" color="#111" style={styles.loadingIndicator} />
+          <ActivityIndicator
+            size="large"
+            color={T.primary}
+            style={styles.loadingIndicator}
+          />
         ) : (
           <>
-            <Text style={styles.label}>Steps</Text>
-            <TextInput
-              style={styles.input}
-              value={steps}
-              onChangeText={(v) => {
-                setSteps(v);
-                setSubmitSuccess(false);
-              }}
-              placeholder="e.g. 8000"
-              keyboardType="numeric"
-              returnKeyType="next"
-            />
-
-            <Text style={styles.label}>Weight (kg)</Text>
-            <TextInput
-              style={styles.input}
-              value={weight}
-              onChangeText={(v) => {
-                setWeight(v);
-                setSubmitSuccess(false);
-              }}
-              placeholder="e.g. 72.5"
-              keyboardType="decimal-pad"
-              returnKeyType="next"
-            />
-
-            <Text style={styles.label}>Meal description</Text>
-            <TextInput
-              style={[styles.input, styles.multiline]}
-              value={mealDescription}
-              onChangeText={(v) => {
-                setMealDescription(v);
-                setSubmitSuccess(false);
-              }}
-              placeholder="Describe your meals today"
-              multiline
-              numberOfLines={4}
-              maxLength={1000}
-              textAlignVertical="top"
-            />
-
-            <Text style={styles.label}>Meal photo</Text>
-            {photoUri ? (
-              <View style={styles.photoRow}>
-                <Image
-                  source={{ uri: photoUri }}
-                  style={styles.thumbnail}
-                />
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={handleRemovePhoto}
-                >
-                  <Text style={styles.removeButtonText}>Remove</Text>
-                </TouchableOpacity>
-              </View>
-            ) : existingPhotoKey ? (
+            {/* ── Coach Message Preview Card ── */}
+            {latestMessage && (
               <TouchableOpacity
-                style={styles.photoButton}
-                onPress={handlePickPhoto}
+                onPress={() => router.push('/messages')}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Open coach conversation"
+                style={styles.coachCard}
               >
-                <Text style={styles.photoButtonText}>
-                  Photo already uploaded — tap to replace
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.photoButton}
-                onPress={handlePickPhoto}
-              >
-                <Text style={styles.photoButtonText}>Add meal photo</Text>
+                <Avatar initials={coachInitials} size={36} />
+                <View style={styles.coachCardContent}>
+                  <View style={styles.coachCardHeaderRow}>
+                    <Text style={styles.coachNameText}>{coachName}</Text>
+                    <Text style={styles.coachTimeText}>
+                      {fmtMessageTime(latestMessage.created_at)}
+                    </Text>
+                  </View>
+                  <Text style={styles.coachSnippetText} numberOfLines={2}>
+                    {latestMessage.content}
+                  </Text>
+                </View>
               </TouchableOpacity>
             )}
 
-            <Text style={styles.label}>Questions for your coach</Text>
-            <TextInput
-              style={[styles.input, styles.multiline]}
-              value={questions}
-              onChangeText={(v) => {
-                setQuestions(v);
-                setSubmitSuccess(false);
-              }}
-              placeholder="Any questions or notes for your coach"
-              multiline
-              numberOfLines={4}
-              maxLength={2000}
-              textAlignVertical="top"
-            />
+            {/* ── Today's Tasks Checklist + Completion Ring ── */}
+            <View style={styles.tasksCard}>
+              <TouchableOpacity
+                onPress={toggleCollapsed}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Today's tasks, ${collapsed ? 'collapsed' : 'expanded'}. Tap to ${
+                  collapsed ? 'expand' : 'collapse'
+                }`}
+                accessibilityState={{ expanded: !collapsed }}
+                style={[
+                  styles.tasksHeaderRow,
+                  collapsed && styles.tasksHeaderRowCollapsed,
+                ]}
+              >
+                <View style={styles.tasksHeaderLeft}>
+                  <SectionLabel style={styles.taskSectionLabel}>
+                    TODAY'S TASKS
+                  </SectionLabel>
+                  <Text
+                    style={[
+                      styles.tasksSubtitle,
+                      { color: allTasksDone ? T.successMid : T.onSurface },
+                    ]}
+                  >
+                    {allTasksDone ? (
+                      <Text style={{ color: T.successMid }}>✓ All done!</Text>
+                    ) : (
+                      `${tasks.length - doneCount} task${
+                        tasks.length - doneCount !== 1 ? 's' : ''
+                      } remaining`
+                    )}
+                  </Text>
+                </View>
+                <View style={styles.tasksHeaderRight}>
+                  <CompletionRing done={doneCount} total={tasks.length} size={72} />
+                  <Ionicons
+                    name={collapsed ? 'chevron-down' : 'chevron-up'}
+                    size={18}
+                    color={T.muted}
+                    style={styles.chevronIcon}
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {!collapsed && (
+                <View style={styles.taskList}>
+                  {tasks.map((task, i) => (
+                    <TouchableOpacity
+                      key={task.id}
+                      onPress={task.onTap}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${task.label}, ${
+                        task.done ? 'completed' : 'incomplete'
+                      }`}
+                      style={[
+                        styles.taskRow,
+                        i > 0 && styles.taskRowBorder,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.taskCheckbox,
+                          task.done
+                            ? styles.taskCheckboxDone
+                            : styles.taskCheckboxEmpty,
+                        ]}
+                      >
+                        {task.done && <IconCheck size={12} color={T.white} strokeWidth={2.5} />}
+                      </View>
+                      <Chip
+                        iconKey={task.iconKey}
+                        size={14}
+                        bg={task.done ? T.surfaceLow : task.chipBg}
+                        color={task.done ? T.muted : task.chipColor}
+                        chipSize={28}
+                        radius={7}
+                      />
+                      <Text
+                        style={[
+                          styles.taskLabel,
+                          task.done && styles.taskLabelDone,
+                        ]}
+                      >
+                        {task.label}
+                      </Text>
+                      {task.optional && (
+                        <View style={styles.optionalBadge}>
+                          <Text style={styles.optionalBadgeText}>optional</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* ── Stats Row (Weight & Steps) ── */}
+            <View style={styles.statsGrid}>
+              {/* Weight Stat Card */}
+              <View style={styles.statCard}>
+                <View style={styles.statCardHeader}>
+                  <Text style={styles.statLabel}>WEIGHT</Text>
+                  <Chip
+                    iconKey="scale"
+                    size={12}
+                    bg="#e8f1fb"
+                    color={T.primary}
+                    chipSize={24}
+                    radius={6}
+                  />
+                </View>
+                <View style={styles.statValueRow}>
+                  <Text style={styles.statValue}>
+                    {currentWeightVal !== null
+                      ? currentWeightVal.toFixed(1)
+                      : '—'}
+                  </Text>
+                  <Text style={styles.statUnit}>kg</Text>
+                </View>
+                <Text
+                  style={[
+                    styles.statDelta,
+                    {
+                      color:
+                        weightDeltaText === 'No prev log'
+                          ? T.muted
+                          : weightDeltaIsGood
+                          ? T.successMid
+                          : T.redMid,
+                    },
+                  ]}
+                >
+                  {weightDeltaText}
+                </Text>
+              </View>
+
+              {/* Steps Stat Card */}
+              <View style={styles.statCard}>
+                <View style={styles.statCardHeader}>
+                  <Text style={styles.statLabel}>STEPS</Text>
+                  <Chip
+                    iconKey="steps"
+                    size={12}
+                    bg={T.successBg}
+                    color={T.success}
+                    chipSize={24}
+                    radius={6}
+                  />
+                </View>
+                <View style={styles.statValueRow}>
+                  <Text style={styles.statValue}>
+                    {currentStepsVal !== null
+                      ? currentStepsVal.toLocaleString()
+                      : '—'}
+                  </Text>
+                  <Text style={styles.statUnit}>steps</Text>
+                </View>
+                <Text
+                  style={[
+                    styles.statDelta,
+                    {
+                      color:
+                        stepsDeltaText === 'No prev log'
+                          ? T.muted
+                          : stepsDeltaIsGood
+                          ? T.successMid
+                          : T.redMid,
+                    },
+                  ]}
+                >
+                  {stepsDeltaText}
+                </Text>
+              </View>
+            </View>
+
+            {/* ── Daily Log Entry Form Cards ── */}
+            <SectionLabel style={styles.formSectionLabel}>
+              DAILY LOG
+            </SectionLabel>
+
+            {/* Body Metrics Card */}
+            <Card style={styles.formCard}>
+              <View style={styles.formCardHeader}>
+                <Chip
+                  iconKey="scale"
+                  size={13}
+                  bg="#e8f1fb"
+                  color={T.primary}
+                  chipSize={26}
+                  radius={7}
+                />
+                <Text style={styles.formCardTitle}>BODY METRICS</Text>
+              </View>
+
+              <FieldLabel>Steps</FieldLabel>
+              <TextInput
+                ref={stepsInputRef}
+                style={styles.input}
+                value={steps}
+                onChangeText={(v) => {
+                  setSteps(v);
+                  setSubmitSuccess(false);
+                }}
+                placeholder="e.g. 8000"
+                placeholderTextColor={T.muted}
+                keyboardType="numeric"
+                returnKeyType="next"
+              />
+
+              <FieldLabel>Weight (kg)</FieldLabel>
+              <TextInput
+                ref={weightInputRef}
+                style={[styles.input, { marginBottom: 0 }]}
+                value={weight}
+                onChangeText={(v) => {
+                  setWeight(v);
+                  setSubmitSuccess(false);
+                }}
+                placeholder="e.g. 72.5"
+                placeholderTextColor={T.muted}
+                keyboardType="decimal-pad"
+                returnKeyType="next"
+              />
+            </Card>
+
+            {/* Nutrition Card */}
+            <Card style={styles.formCard}>
+              <View style={styles.formCardHeader}>
+                <Chip
+                  iconKey="utensils"
+                  size={13}
+                  bg={T.amberBg}
+                  color={T.amber}
+                  chipSize={26}
+                  radius={7}
+                />
+                <Text style={styles.formCardTitle}>NUTRITION</Text>
+              </View>
+
+              <FieldLabel>Meal Type</FieldLabel>
+              <TouchableOpacity
+                style={styles.mealPickerTrigger}
+                onPress={() => {
+                  setPendingMealType(selectedMealType);
+                  setPickerModalVisible(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Select meal type"
+              >
+                <Text
+                  style={[
+                    styles.mealPickerTriggerText,
+                    !selectedMealType && styles.placeholderText,
+                  ]}
+                >
+                  {selectedMealType
+                    ? MEAL_OPTIONS.find((o) => o.type === selectedMealType)?.label ??
+                      selectedMealType
+                    : 'Select a meal'}
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={T.onSurfaceVar} />
+              </TouchableOpacity>
+
+              <Modal
+                visible={pickerModalVisible}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setPickerModalVisible(false)}
+              >
+                <TouchableOpacity
+                  style={styles.modalOverlay}
+                  activeOpacity={1}
+                  onPress={() => setPickerModalVisible(false)}
+                >
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    style={styles.modalSheet}
+                    onPress={(e) => e.stopPropagation()}
+                  >
+                    <View style={styles.modalHeader}>
+                      <Text style={styles.modalTitle}>Select Meal Type</Text>
+                      <TouchableOpacity
+                        onPress={() => setPickerModalVisible(false)}
+                        style={styles.modalCloseButton}
+                        accessibilityRole="button"
+                        accessibilityLabel="Close meal picker"
+                      >
+                        <Ionicons name="close" size={22} color={T.onSurfaceVar} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {MEAL_OPTIONS.map((opt) => {
+                      const isSelected = pendingMealType === opt.type;
+                      return (
+                        <TouchableOpacity
+                          key={opt.type}
+                          style={[
+                            styles.mealOptionRow,
+                            isSelected && styles.mealOptionRowSelected,
+                          ]}
+                          onPress={() => setPendingMealType(opt.type)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isSelected }}
+                        >
+                          <Text
+                            style={[
+                              styles.mealOptionText,
+                              isSelected && styles.mealOptionTextSelected,
+                            ]}
+                          >
+                            {opt.label}
+                          </Text>
+                          {isSelected && (
+                            <Ionicons
+                              name="checkmark"
+                              size={20}
+                              color={T.primary}
+                            />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+
+                    <Btn
+                      variant="primary"
+                      onPress={() => {
+                        handleMealTypeChange(pendingMealType);
+                        setPickerModalVisible(false);
+                      }}
+                      accessibilityLabel="Confirm meal type selection"
+                      style={styles.modalConfirmBtn}
+                    >
+                      Confirm
+                    </Btn>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              </Modal>
+
+              <FieldLabel>Meal description</FieldLabel>
+              <TextInput
+                ref={mealInputRef}
+                style={[styles.input, styles.multiline]}
+                value={mealDescription}
+                onChangeText={(v) => {
+                  setMealDescription(v);
+                  setSubmitSuccess(false);
+                  if (selectedMealType) {
+                    setMealEntries((prev) => ({
+                      ...prev,
+                      [selectedMealType]: {
+                        ...prev[selectedMealType],
+                        description: v,
+                      },
+                    }));
+                  }
+                }}
+                placeholder={
+                  selectedMealType
+                    ? `What did you have for ${selectedMealType}?`
+                    : 'Describe your meal'
+                }
+                placeholderTextColor={T.muted}
+                multiline
+                numberOfLines={4}
+                maxLength={1000}
+                textAlignVertical="top"
+              />
+
+              <FieldLabel>Meal photo</FieldLabel>
+              {photoUri ? (
+                <View style={[styles.photoRow, { marginBottom: 0 }]}>
+                  <Image
+                    source={{ uri: photoUri }}
+                    style={styles.thumbnail}
+                  />
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={handleRemovePhoto}
+                  >
+                    <Text style={styles.removeButtonText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : existingPhotoKey ? (
+                <View style={[styles.photoRow, { marginBottom: 0 }]}>
+                  <TouchableOpacity
+                    style={styles.photoButton}
+                    onPress={handlePickPhoto}
+                  >
+                    <Text style={styles.photoButtonText}>
+                      Photo uploaded — tap to replace
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={handleRemovePhoto}
+                  >
+                    <Text style={styles.removeButtonText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.photoButton, { marginBottom: 0 }]}
+                  onPress={handlePickPhoto}
+                >
+                  <Text style={styles.photoButtonText}>
+                    {selectedMealType
+                      ? `Add ${selectedMealType} photo`
+                      : 'Add meal photo'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </Card>
+
+            {/* Coach Note Card */}
+            <Card style={styles.formCard}>
+              <View style={styles.formCardHeader}>
+                <Chip
+                  iconKey="chat"
+                  size={13}
+                  bg="#ede9fe"
+                  color="#6d28d9"
+                  chipSize={26}
+                  radius={7}
+                />
+                <Text style={styles.formCardTitle}>COACH NOTE</Text>
+              </View>
+
+              <FieldLabel>Questions for your coach</FieldLabel>
+              <TextInput
+                ref={questionsInputRef}
+                style={[styles.input, styles.multiline, { marginBottom: 0 }]}
+                value={questions}
+                onChangeText={(v) => {
+                  setQuestions(v);
+                  setSubmitSuccess(false);
+                }}
+                placeholder="Any questions or notes for your coach"
+                placeholderTextColor={T.muted}
+                multiline
+                numberOfLines={4}
+                maxLength={2000}
+                textAlignVertical="top"
+              />
+            </Card>
 
             {submitError !== null && (
               <Text style={styles.submitError}>{submitError}</Text>
             )}
 
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                (blocked || submitting) && styles.submitButtonDisabled,
-              ]}
+            <Btn
+              variant="primary"
               onPress={handleSubmit}
               disabled={blocked || submitting}
-              accessibilityRole="button"
               accessibilityLabel="Submit daily log"
+              style={styles.submitButton}
             >
               {submitting ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={T.white} />
               ) : (
-                <Text style={styles.submitButtonText}>Save Log</Text>
+                'Save Log'
               )}
-            </TouchableOpacity>
+            </Btn>
 
             {submitSuccess && (
               <Text style={styles.successText}>Logged ✓</Text>
@@ -543,41 +1456,296 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    padding: 24,
-    paddingTop: 56,
+    padding: 20,
+    paddingTop: 52,
+    backgroundColor: T.surface,
   },
-  headerRow: {
+  greetingHeader: {
+    marginHorizontal: -20,
+    marginTop: -52,
+    paddingHorizontal: 20,
+    paddingTop: 52,
+    paddingBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  greetingLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  greetingSub: {
+    fontSize: 12,
+    color: T.muted,
+    fontFamily: fontFamily.bodyRegular,
+  },
+  greetingName: {
+    marginTop: 2,
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    fontSize: 26,
+    letterSpacing: -0.2,
+    color: T.onSurface,
+  },
+  greetingDate: {
+    marginTop: 2,
+    fontSize: 12,
+    color: T.muted,
+    fontFamily: fontFamily.bodyRegular,
+  },
+  greetingRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  topMessageBtn: {
+    position: 'relative',
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: T.amberBg,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  streakBadgeText: {
+    fontSize: 11,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    color: T.amber,
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: T.redMid,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: T.white,
+  },
+  unreadBadgeText: {
+    color: T.white,
+    fontSize: 10,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  coachCard: {
+    backgroundColor: T.white,
+    borderRadius: 16,
+    padding: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: T.primary,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 14,
+    ...cardShadow,
+  },
+  coachCardContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  coachCardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 3,
   },
-  headerLinks: {
+  coachNameText: {
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    fontSize: 13,
+    color: T.primary,
+  },
+  coachTimeText: {
+    fontSize: 10,
+    color: T.muted,
+    fontFamily: fontFamily.bodyRegular,
+  },
+  coachSnippetText: {
+    fontSize: 12,
+    color: T.onSurfaceVar,
+    fontFamily: fontFamily.bodyRegular,
+    lineHeight: 17,
+  },
+  tasksCard: {
+    backgroundColor: T.white,
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 12,
+    ...cardShadow,
+  },
+  tasksHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  tasksHeaderRowCollapsed: {
+    marginBottom: 0,
+  },
+  tasksHeaderLeft: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  tasksHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  chevronIcon: {
+    marginLeft: 2,
+  },
+  taskSectionLabel: {
+    marginBottom: 4,
+  },
+  tasksSubtitle: {
+    fontSize: 14,
+    fontFamily: fontFamily.bodySemiBold,
+    fontWeight: '600',
+    color: T.onSurface,
+  },
+  taskList: {
+    marginTop: 4,
+  },
+  taskRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingVertical: 10,
   },
-  heading: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111',
+  taskRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: T.border,
   },
-  reportLink: {
-    fontSize: 14,
+  taskCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  taskCheckboxDone: {
+    backgroundColor: T.primary,
+  },
+  taskCheckboxEmpty: {
+    backgroundColor: T.surfaceLow,
+  },
+  taskLabel: {
+    flex: 1,
+    fontFamily: fontFamily.bodyMedium,
+    fontSize: 13,
+    fontWeight: '500',
+    color: T.onSurface,
+  },
+  taskLabelDone: {
+    color: T.muted,
+    textDecorationLine: 'line-through',
+  },
+  optionalBadge: {
+    backgroundColor: T.surfaceLow,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  optionalBadgeText: {
+    fontSize: 10,
+    fontFamily: fontFamily.bodySemiBold,
     fontWeight: '600',
-    color: '#1a56db',
+    color: T.muted,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: T.white,
+    borderRadius: 16,
+    padding: 14,
+    ...cardShadow,
+  },
+  statCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    color: T.muted,
+    letterSpacing: 0.6,
+  },
+  statValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 3,
+  },
+  statValue: {
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    fontSize: 22,
+    color: T.onSurface,
+  },
+  statUnit: {
+    fontSize: 11,
+    color: T.muted,
+    fontFamily: fontFamily.bodyRegular,
+  },
+  statDelta: {
+    fontSize: 11,
+    fontFamily: fontFamily.bodySemiBold,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  formSectionLabel: {
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  formCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+  },
+  formCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  formCardTitle: {
+    fontSize: 11,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    color: T.muted,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   loadingIndicator: {
     marginTop: 40,
   },
   errorBanner: {
-    backgroundColor: '#F8D7DA',
+    backgroundColor: T.redBg,
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
   },
   errorBannerText: {
-    color: '#721c24',
+    color: T.red,
+    fontFamily: fontFamily.bodyMedium,
     fontSize: 14,
   },
   statusBanner: {
@@ -587,87 +1755,141 @@ const styles = StyleSheet.create({
   },
   statusBannerText: {
     fontSize: 14,
-    color: '#333',
+    fontFamily: fontFamily.bodyMedium,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+  mealPickerTrigger: {
+    ...inputStyle,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  mealPickerTriggerText: {
+    fontSize: 15,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.onSurface,
+  },
+  placeholderText: {
+    color: T.muted,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: T.white,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    ...cardShadow,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontFamily: fontFamily.headingBold,
+    fontWeight: '700',
+    color: T.onSurface,
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  mealOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 8,
     marginBottom: 6,
+  },
+  mealOptionRowSelected: {
+    backgroundColor: T.primaryLight,
+  },
+  mealOptionText: {
+    fontSize: 15,
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurface,
+  },
+  mealOptionTextSelected: {
+    fontFamily: fontFamily.bodySemiBold,
+    fontWeight: '600',
+    color: T.primary,
+  },
+  modalConfirmBtn: {
     marginTop: 12,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    fontSize: 15,
-    color: '#111',
-    backgroundColor: '#fafafa',
+    ...inputStyle,
+    marginBottom: 16,
   },
   multiline: {
     minHeight: 96,
     paddingTop: 11,
+    textAlignVertical: 'top',
   },
   photoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginBottom: 16,
   },
   thumbnail: {
     width: 80,
     height: 80,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: T.border,
   },
   removeButton: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: T.border,
+    backgroundColor: T.white,
   },
   removeButtonText: {
     fontSize: 14,
-    color: '#555',
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurfaceVar,
   },
   photoButton: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: T.border,
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: 'center',
+    backgroundColor: T.white,
+    marginBottom: 16,
+    ...cardShadow,
   },
   photoButtonText: {
     fontSize: 14,
-    color: '#555',
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurfaceVar,
   },
   submitError: {
-    color: '#dc2626',
+    color: T.red,
+    fontFamily: fontFamily.bodyMedium,
     fontSize: 14,
-    marginTop: 12,
+    marginTop: 4,
+    marginBottom: 12,
     lineHeight: 20,
   },
   submitButton: {
-    backgroundColor: '#111',
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  submitButtonDisabled: {
-    opacity: 0.4,
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    marginTop: 12,
   },
   successText: {
-    color: '#16a34a',
+    color: T.success,
+    fontFamily: fontFamily.bodySemiBold,
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',

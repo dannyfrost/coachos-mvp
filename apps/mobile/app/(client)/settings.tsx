@@ -2,16 +2,35 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
 } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
+import {
+  T,
+  fontFamily,
+  Card,
+  Btn,
+  Badge,
+  SectionLabel,
+  FieldLabel,
+  Avatar,
+  initialsOf,
+  cardShadow,
+} from '../../lib/design-system';
+import { Chip } from '../../lib/icons';
+import { computeStreak, fmtDateShort, getTodayISO } from '../../lib/stats';
+
+type SubRow = {
+  status: string;
+  start_date: string;
+  end_date: string;
+};
 
 export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
@@ -19,11 +38,13 @@ export default function SettingsScreen() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
 
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [savingPassword, setSavingPassword] = useState(false);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [coachName, setCoachName] = useState('Not assigned');
+  const [clientAge, setClientAge] = useState<number | null>(null);
+  const [conditionNotes, setConditionNotes] = useState<string | null>(null);
+
+  const [totalLogsCount, setTotalLogsCount] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [subscription, setSubscription] = useState<SubRow | null>(null);
 
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -41,18 +62,79 @@ export default function SettingsScreen() {
       return;
     }
 
-    try {
-      const { data, error } = await supabase
-        .from('platform_users')
-        .select('full_name, email')
-        .eq('id', session.user.id)
-        .single();
+    const uid = session.user.id;
 
-      if (error || !data) {
+    try {
+      const [
+        userResult,
+        clientResult,
+        subResult,
+        logsCountResult,
+        recentLogsResult,
+      ] = await Promise.all([
+        supabase
+          .from('platform_users')
+          .select('full_name, email')
+          .eq('id', uid)
+          .single(),
+        supabase
+          .from('clients')
+          .select('coach_id, age, condition_notes')
+          .eq('id', uid)
+          .single(),
+        supabase
+          .from('client_subscriptions')
+          .select('status, start_date, end_date')
+          .eq('client_id', uid)
+          .order('start_date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('daily_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('client_id', uid),
+        supabase
+          .from('daily_logs')
+          .select('log_date')
+          .eq('client_id', uid)
+          .order('log_date', { ascending: false })
+          .limit(30),
+      ]);
+
+      if (userResult.error || !userResult.data) {
         setFetchError(true);
       } else {
-        setFullName(data.full_name ?? '');
-        setEmail(data.email ?? '');
+        setFullName(userResult.data.full_name ?? '');
+        setEmail(userResult.data.email ?? '');
+      }
+
+      if (clientResult.data) {
+        setClientAge(clientResult.data.age ?? null);
+        setConditionNotes(clientResult.data.condition_notes ?? null);
+
+        if (clientResult.data.coach_id) {
+          const { data: coachData } = await supabase
+            .from('platform_users')
+            .select('full_name')
+            .eq('id', clientResult.data.coach_id)
+            .single();
+
+          if (coachData?.full_name) {
+            setCoachName(coachData.full_name);
+          }
+        }
+      }
+
+      if (typeof logsCountResult.count === 'number') {
+        setTotalLogsCount(logsCountResult.count);
+      }
+
+      const logDates = (recentLogsResult.data ?? []).map((l) => l.log_date);
+      const computedStreak = computeStreak(logDates, getTodayISO());
+      setStreak(computedStreak);
+
+      if (subResult.data) {
+        setSubscription(subResult.data as SubRow);
       }
     } catch {
       setFetchError(true);
@@ -64,40 +146,6 @@ export default function SettingsScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleChangePassword = async () => {
-    setPasswordError(null);
-    setPasswordSuccess(false);
-
-    if (newPassword.length < 8) {
-      setPasswordError('Password must be at least 8 characters.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordError('Passwords do not match.');
-      return;
-    }
-
-    setSavingPassword(true);
-    try {
-      const supabase = createMobileSupabaseClient();
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (error) {
-        setPasswordError(error.message || 'Could not update password. Try again.');
-      } else {
-        setPasswordSuccess(true);
-        setNewPassword('');
-        setConfirmPassword('');
-      }
-    } catch {
-      setPasswordError('Network error. Check your connection and try again.');
-    } finally {
-      setSavingPassword(false);
-    }
-  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -112,21 +160,32 @@ export default function SettingsScreen() {
     }
   };
 
+  // Subscription timeline calculations
+  let daysLeft = 0;
+  let subProgressPct = 0;
+  let startDateLabel = '';
+  let endDateLabel = '';
+
+  if (subscription?.start_date && subscription?.end_date) {
+    const start = new Date(subscription.start_date).getTime();
+    const end = new Date(subscription.end_date).getTime();
+    const now = new Date().getTime();
+    const totalDuration = Math.max(1, end - start);
+    const elapsed = Math.max(0, Math.min(totalDuration, now - start));
+    subProgressPct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+
+    const msPerDay = 1000 * 60 * 60 * 24;
+    daysLeft = Math.max(0, Math.ceil((end - now) / msPerDay));
+    startDateLabel = fmtDateShort(subscription.start_date);
+    endDateLabel = fmtDateShort(subscription.end_date);
+  }
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: '#fff' }}
-    >
+    <View style={{ flex: 1, backgroundColor: T.surface }}>
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          accessibilityRole="button"
-        >
-          <Text style={styles.backLink}>{'< Back'}</Text>
-        </TouchableOpacity>
         <Text style={styles.heading}>Settings</Text>
 
         {fetchError && (
@@ -140,219 +199,428 @@ export default function SettingsScreen() {
         {loading ? (
           <ActivityIndicator
             size="large"
-            color="#111"
+            color={T.primary}
             style={styles.loadingIndicator}
           />
         ) : (
           <>
-            <Text style={styles.sectionLabel}>PROFILE</Text>
-            <View style={styles.card}>
-              <Text style={styles.fieldLabel}>Name</Text>
-              <Text style={styles.fieldValue}>{fullName || '—'}</Text>
+            {/* ── Profile Header Card (Name & Email) ── */}
+            <SectionLabel style={styles.sectionHeader}>PROFILE</SectionLabel>
+            <Card style={styles.card}>
+              <View style={styles.avatarRow}>
+                {fullName ? (
+                  <Avatar initials={initialsOf(fullName)} size={42} style={styles.avatar} />
+                ) : null}
+                <View style={styles.profileTextContainer}>
+                  <FieldLabel>Name</FieldLabel>
+                  <Text style={styles.fieldValue}>{fullName || '—'}</Text>
+                </View>
+              </View>
 
               <View style={styles.divider} />
 
-              <Text style={styles.fieldLabel}>Email</Text>
+              <FieldLabel>Email</FieldLabel>
               <Text style={styles.fieldValue}>{email || '—'}</Text>
+            </Card>
+
+            {/* ── Stats Row (Streak & Total Logs) ── */}
+            <SectionLabel style={styles.sectionHeader}>ACTIVITY STATS</SectionLabel>
+            <View style={styles.statsGrid}>
+              <View style={styles.statCard}>
+                <View style={styles.statCardHeader}>
+                  <Text style={styles.statLabel}>STREAK</Text>
+                  <Chip
+                    iconKey="flame"
+                    size={13}
+                    bg={T.amberBg}
+                    color={T.amberMid}
+                    chipSize={26}
+                    radius={6}
+                  />
+                </View>
+                <View style={styles.statValueRow}>
+                  <Text style={styles.statValue}>{streak}</Text>
+                  <Text style={styles.statUnit}>
+                    {streak === 1 ? 'day' : 'days'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.statCard}>
+                <View style={styles.statCardHeader}>
+                  <Text style={styles.statLabel}>TOTAL LOGS</Text>
+                  <Chip
+                    iconKey="check"
+                    size={13}
+                    bg={T.successBg}
+                    color={T.success}
+                    chipSize={26}
+                    radius={6}
+                  />
+                </View>
+                <View style={styles.statValueRow}>
+                  <Text style={styles.statValue}>{totalLogsCount}</Text>
+                  <Text style={styles.statUnit}>
+                    {totalLogsCount === 1 ? 'log' : 'logs'}
+                  </Text>
+                </View>
+              </View>
             </View>
 
-            <Text style={styles.sectionLabel}>CHANGE PASSWORD</Text>
-            <View style={styles.card}>
-              <Text style={styles.inputLabel}>New password</Text>
-              <TextInput
-                style={styles.input}
-                value={newPassword}
-                onChangeText={(v) => {
-                  setNewPassword(v);
-                  setPasswordSuccess(false);
-                  setPasswordError(null);
-                }}
-                placeholder="At least 8 characters"
-                secureTextEntry
-                returnKeyType="next"
-              />
+            {/* ── Subscription Card ── */}
+            <SectionLabel style={styles.sectionHeader}>SUBSCRIPTION</SectionLabel>
+            <Card style={styles.card}>
+              {subscription ? (
+                <>
+                  <View style={styles.subHeaderRow}>
+                    <FieldLabel style={styles.subFieldLabel}>PLAN STATUS</FieldLabel>
+                    <Badge status={subscription.status} small />
+                  </View>
 
-              <Text style={[styles.inputLabel, { marginTop: 12 }]}>
-                Confirm new password
-              </Text>
-              <TextInput
-                style={styles.input}
-                value={confirmPassword}
-                onChangeText={(v) => {
-                  setConfirmPassword(v);
-                  setPasswordSuccess(false);
-                  setPasswordError(null);
-                }}
-                placeholder="Re-enter new password"
-                secureTextEntry
-                returnKeyType="done"
-                onSubmitEditing={handleChangePassword}
-              />
+                  <View style={styles.subDetailsRow}>
+                    <Text style={styles.subPlanText}>
+                      Coaching Plan · Renews {endDateLabel}
+                    </Text>
+                    <Text style={styles.subDaysLeftText}>
+                      {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left
+                    </Text>
+                  </View>
 
-              {passwordError !== null && (
-                <Text style={styles.errorText}>{passwordError}</Text>
+                  {/* Progress bar */}
+                  <View style={styles.progressBarBg}>
+                    <LinearGradient
+                      colors={[T.primary, T.primaryMid]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[
+                        styles.progressBarFill,
+                        { width: `${subProgressPct}%` },
+                      ]}
+                    />
+                  </View>
+
+                  <View style={styles.subDatesRow}>
+                    <Text style={styles.subDateText}>{startDateLabel}</Text>
+                    <Text style={styles.subDateText}>{endDateLabel}</Text>
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.emptySubText}>No active subscription found.</Text>
               )}
+            </Card>
 
-              {passwordSuccess && (
-                <Text style={styles.successText}>Password updated ✓</Text>
-              )}
+            {/* ── Profile Info List (Coach, Age, Conditions) ── */}
+            <SectionLabel style={styles.sectionHeader}>PROFILE DETAILS</SectionLabel>
+            <Card style={styles.infoCard}>
+              {/* Coach Row */}
+              <View style={styles.infoRow}>
+                <Chip
+                  iconKey="user"
+                  size={15}
+                  bg="#e8f1fb"
+                  color={T.primary}
+                  chipSize={34}
+                  radius={10}
+                />
+                <View style={styles.infoCol}>
+                  <Text style={styles.infoLabel}>Coach</Text>
+                  <Text style={styles.infoValue}>{coachName}</Text>
+                </View>
+              </View>
 
+              <View style={styles.infoDivider} />
+
+              {/* Age Row */}
+              <View style={styles.infoRow}>
+                <Chip
+                  iconKey="calendar"
+                  size={15}
+                  bg={T.surfaceLow}
+                  color={T.onSurfaceVar}
+                  chipSize={34}
+                  radius={10}
+                />
+                <View style={styles.infoCol}>
+                  <Text style={styles.infoLabel}>Age</Text>
+                  <Text style={styles.infoValue}>
+                    {clientAge !== null ? `${clientAge} years` : 'Not set'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.infoDivider} />
+
+              {/* Conditions Row */}
+              <View style={styles.infoRow}>
+                <Chip
+                  iconKey="cross"
+                  size={15}
+                  bg={T.redBg}
+                  color={T.redMid}
+                  chipSize={34}
+                  radius={10}
+                />
+                <View style={styles.infoCol}>
+                  <Text style={styles.infoLabel}>Conditions</Text>
+                  <Text style={styles.infoValue}>
+                    {conditionNotes && conditionNotes.trim().length > 0
+                      ? conditionNotes
+                      : 'None reported'}
+                  </Text>
+                </View>
+              </View>
+            </Card>
+
+            {/* ── Account Section (Change Password & Log Out) ── */}
+            <View style={styles.accountDivider} />
+            <SectionLabel style={styles.accountSectionHeader}>ACCOUNT</SectionLabel>
+            <Card style={styles.infoCard}>
               <TouchableOpacity
-                style={[
-                  styles.saveButton,
-                  savingPassword && styles.buttonDisabled,
-                ]}
-                onPress={handleChangePassword}
-                disabled={savingPassword}
+                style={styles.settingsRow}
+                onPress={() => router.push('/change-password')}
+                activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel="Update password"
+                accessibilityLabel="Change password"
               >
-                {savingPassword ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Update Password</Text>
-                )}
+                <Chip
+                  iconKey="lock"
+                  size={15}
+                  bg="#e8f1fb"
+                  color={T.primary}
+                  chipSize={34}
+                  radius={10}
+                />
+                <View style={styles.infoCol}>
+                  <Text style={styles.settingsRowLabel}>Change Password</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={T.muted} />
               </TouchableOpacity>
-            </View>
+            </Card>
 
-            <TouchableOpacity
-              style={[styles.logoutButton, loggingOut && styles.buttonDisabled]}
+            {/* ── Log Out Button ── */}
+            <Btn
+              variant="danger"
               onPress={handleLogout}
               disabled={loggingOut}
-              accessibilityRole="button"
               accessibilityLabel="Log out"
+              style={styles.logoutButton}
             >
               {loggingOut ? (
-                <ActivityIndicator color="#dc2626" />
+                <ActivityIndicator color={T.red} />
               ) : (
-                <Text style={styles.logoutButtonText}>Log Out</Text>
+                'Log Out'
               )}
-            </TouchableOpacity>
+            </Btn>
           </>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    padding: 24,
-    paddingTop: 56,
-    backgroundColor: '#fff',
-  },
-  backLink: {
-    fontSize: 15,
-    color: '#1a56db',
-    marginBottom: 12,
+    padding: 20,
+    paddingTop: 52,
+    backgroundColor: T.surface,
   },
   heading: {
     fontSize: 22,
-    fontWeight: '700',
-    color: '#111',
-    marginBottom: 20,
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    color: T.onSurface,
+    marginBottom: 16,
   },
   loadingIndicator: {
     marginTop: 40,
   },
   errorBanner: {
-    backgroundColor: '#F8D7DA',
+    backgroundColor: T.redBg,
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
   },
   errorBannerText: {
-    color: '#721c24',
+    color: T.red,
+    fontFamily: fontFamily.bodyMedium,
     fontSize: 14,
   },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#6b7280',
-    letterSpacing: 0.5,
-    marginTop: 18,
+  sectionHeader: {
+    marginTop: 16,
     marginBottom: 8,
   },
   card: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    padding: 14,
-    backgroundColor: '#fafafa',
+    marginBottom: 10,
   },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-    marginBottom: 2,
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatar: {
+    marginRight: 12,
+  },
+  profileTextContainer: {
+    flex: 1,
   },
   fieldValue: {
     fontSize: 15,
+    fontFamily: fontFamily.bodyMedium,
     fontWeight: '500',
-    color: '#111',
+    color: T.onSurface,
   },
   divider: {
     height: 1,
-    backgroundColor: '#e5e7eb',
-    marginVertical: 10,
+    backgroundColor: T.border,
+    marginVertical: 12,
   },
-  inputLabel: {
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: T.white,
+    borderRadius: 16,
+    padding: 14,
+    ...cardShadow,
+  },
+  statCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    color: T.muted,
+    letterSpacing: 0.6,
+  },
+  statValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+  },
+  statValue: {
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    fontSize: 22,
+    color: T.onSurface,
+  },
+  statUnit: {
+    fontSize: 12,
+    color: T.muted,
+    fontFamily: fontFamily.bodyRegular,
+  },
+  subHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subFieldLabel: {
+    marginBottom: 0,
+  },
+  subDetailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subPlanText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurfaceVar,
+  },
+  subDaysLeftText: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    color: T.primary,
+  },
+  progressBarBg: {
+    height: 6,
+    backgroundColor: T.surfaceLow,
+    borderRadius: 3,
+    overflow: 'hidden',
     marginBottom: 6,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: '#111',
-    backgroundColor: '#fff',
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
   },
-  errorText: {
-    color: '#dc2626',
-    fontSize: 14,
-    marginTop: 10,
-    lineHeight: 20,
+  subDatesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  successText: {
-    color: '#16a34a',
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 10,
+  subDateText: {
+    fontSize: 10,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.muted,
   },
-  saveButton: {
-    backgroundColor: '#111',
-    borderRadius: 8,
-    paddingVertical: 12,
+  emptySubText: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.muted,
+  },
+  infoCard: {
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  infoRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 14,
+    gap: 12,
+    paddingVertical: 10,
   },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 15,
+  infoCol: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: 11,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    color: T.muted,
+    marginBottom: 2,
+    letterSpacing: 0.5,
+  },
+  infoValue: {
+    fontSize: 14,
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurface,
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: T.border,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+  },
+  settingsRowLabel: {
+    fontSize: 14,
+    fontFamily: fontFamily.bodySemiBold,
     fontWeight: '600',
+    color: T.onSurface,
+  },
+  accountDivider: {
+    height: 1,
+    backgroundColor: T.border,
+    marginTop: 18,
+    marginBottom: 4,
+  },
+  accountSectionHeader: {
+    marginTop: 12,
+    marginBottom: 8,
   },
   logoutButton: {
-    borderWidth: 1,
-    borderColor: '#dc2626',
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 32,
-    marginBottom: 24,
-    backgroundColor: '#fff',
-  },
-  logoutButtonText: {
-    color: '#dc2626',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
+    marginTop: 14,
+    marginBottom: 28,
   },
 });

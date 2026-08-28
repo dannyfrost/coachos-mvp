@@ -4,11 +4,15 @@
     "slug": "coaching-mobile",
     "version": "1.0.0",
     "scheme": "coachapp",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-font"
     ],
     "ios": {
       "supportsTablet": false

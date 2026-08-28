@@ -5,12 +5,21 @@ import {
   ScrollView,
   ActivityIndicator,
   StyleSheet,
-  TouchableOpacity,
   Linking,
 } from 'react-native';
 import { router } from 'expo-router';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
-import LineChart from './_components/LineChart';
+import WeightTrendChart from '../../components/WeightTrendChart';
+import StepsBarChart from '../../components/StepsBarChart';
+import LoggingHeatmap from '../../components/LoggingHeatmap';
+import {
+  T,
+  fontFamily,
+  Card,
+  Btn,
+  Badge,
+  SectionLabel,
+} from '../../lib/design-system';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 
@@ -75,6 +84,7 @@ export default function ReportScreen() {
       router.replace('/activate');
       return;
     }
+    const uid = sess.user.id;
     setSession({ access_token: sess.access_token });
 
     try {
@@ -82,6 +92,7 @@ export default function ReportScreen() {
         supabase
           .from('daily_logs')
           .select('log_date, steps, weight')
+          .eq('client_id', uid)
           .order('log_date', { ascending: false })
           .limit(14),
         supabase
@@ -156,54 +167,69 @@ export default function ReportScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
-        <Text style={styles.backLink}>{'< Back'}</Text>
-      </TouchableOpacity>
       <Text style={styles.heading}>My Progress</Text>
 
       {fetchError && (
         <View style={styles.errorBanner}>
-          <Text style={styles.errorBannerText}>Could not load your data. Pull to retry.</Text>
+          <Text style={styles.errorBannerText}>
+            Could not load your data. Pull to retry.
+          </Text>
         </View>
       )}
 
       {loading ? (
-        <ActivityIndicator size="large" color="#111" style={styles.loadingIndicator} />
+        <ActivityIndicator
+          size="large"
+          color={T.primary}
+          style={styles.loadingIndicator}
+        />
       ) : (
         <>
-          <Text style={styles.sectionLabel}>WEIGHT — LAST {logs.length} LOGS</Text>
-          <View style={styles.card}>
-            <LineChart points={weightPoints} color="#1a56db" />
-          </View>
+          {/* ── Weight Trend (Smooth Catmull-Rom Curve) ── */}
+          <SectionLabel style={styles.sectionHeader}>WEIGHT PROGRESS</SectionLabel>
+          <Card style={styles.card}>
+            <WeightTrendChart points={weightPoints} />
+          </Card>
 
-          <Text style={styles.sectionLabel}>STEPS — LAST {logs.length} LOGS</Text>
-          <View style={styles.card}>
-            <LineChart points={stepsPoints} color="#16a34a" />
-          </View>
+          {/* ── Steps Trend (Dual-tone Bar Chart) ── */}
+          <SectionLabel style={styles.sectionHeader}>STEPS PROGRESS</SectionLabel>
+          <Card style={styles.card}>
+            <StepsBarChart points={stepsPoints} />
+          </Card>
 
-          <Text style={styles.sectionLabel}>CURRENT PLAN</Text>
-          <View style={styles.card}>
+          {/* ── 7-Day Logging Consistency Heatmap ── */}
+          <SectionLabel style={styles.sectionHeader}>CONSISTENCY</SectionLabel>
+          <Card style={styles.card}>
+            <LoggingHeatmap logs={logs} />
+          </Card>
+
+          {/* ── Current Plan ── */}
+          <SectionLabel style={styles.sectionHeader}>CURRENT PLAN</SectionLabel>
+          <Card style={styles.card}>
             {activePlan ? (
               <>
-                <Text style={styles.planTitle}>{activePlan.plans?.title ?? 'Untitled plan'}</Text>
+                <Text style={styles.planTitle}>
+                  {activePlan.plans?.title ?? 'Untitled plan'}
+                </Text>
                 <Text style={styles.planMeta}>
                   {activePlan.plan_type} · assigned {fmtDate(activePlan.assigned_at)}
                 </Text>
                 {activePlan.plans?.content?.file && (
                   <View style={styles.planFileSection}>
-                    <TouchableOpacity
-                      style={[styles.viewPlanButton, openingPlan && styles.buttonDisabled]}
+                    <Btn
+                      variant="primary"
+                      small
                       onPress={handleOpenPlan}
                       disabled={openingPlan}
-                      accessibilityRole="button"
                       accessibilityLabel="View plan file"
+                      style={styles.viewPlanButton}
                     >
                       {openingPlan ? (
-                        <ActivityIndicator size="small" color="#111" />
+                        <ActivityIndicator size="small" color={T.white} />
                       ) : (
-                        <Text style={styles.viewPlanButtonText}>View Plan</Text>
+                        'View Plan'
                       )}
-                    </TouchableOpacity>
+                    </Btn>
                     {planError !== null && (
                       <Text style={styles.planErrorText}>{planError}</Text>
                     )}
@@ -213,22 +239,32 @@ export default function ReportScreen() {
             ) : (
               <Text style={styles.emptyText}>No active plan assigned.</Text>
             )}
-          </View>
+          </Card>
 
-          <Text style={styles.sectionLabel}>ABSENCE / CHECK-IN ALERTS</Text>
+          {/* ── Absence / Check-in Alerts ── */}
+          <SectionLabel style={styles.sectionHeader}>
+            ABSENCE / CHECK-IN ALERTS
+          </SectionLabel>
           {absenceEvents.length === 0 ? (
-            <View style={styles.card}>
+            <Card style={styles.card}>
               <Text style={styles.emptyText}>No alerts on your account.</Text>
-            </View>
+            </Card>
           ) : (
             absenceEvents.map((e) => (
-              <View key={e.id} style={styles.card}>
-                <Text style={styles.planTitle}>{e.level} — {e.action_taken.replace(/_/g, ' ')}</Text>
+              <Card key={e.id} style={[styles.card, styles.alertCard]}>
+                <View style={styles.alertHeaderRow}>
+                  <Badge status={e.level} small />
+                  <Text style={styles.alertTitle}>
+                    {e.action_taken.replace(/_/g, ' ')}
+                  </Text>
+                </View>
                 <Text style={styles.planMeta}>
                   triggered {fmtDate(e.trigger_date)}
-                  {e.resolved_at ? ` · resolved ${fmtDate(e.resolved_at)}` : ' · open'}
+                  {e.resolved_at
+                    ? ` · resolved ${fmtDate(e.resolved_at)}`
+                    : ' · open'}
                 </Text>
-              </View>
+              </Card>
             ))
           )}
         </>
@@ -240,86 +276,80 @@ export default function ReportScreen() {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    padding: 24,
-    paddingTop: 56,
-    backgroundColor: '#fff',
-  },
-  backLink: {
-    fontSize: 15,
-    color: '#1a56db',
-    marginBottom: 12,
+    padding: 20,
+    paddingTop: 52,
+    backgroundColor: T.surface,
   },
   heading: {
     fontSize: 22,
-    fontWeight: '700',
-    color: '#111',
-    marginBottom: 20,
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    color: T.onSurface,
+    marginBottom: 16,
   },
   loadingIndicator: {
     marginTop: 40,
   },
   errorBanner: {
-    backgroundColor: '#F8D7DA',
+    backgroundColor: T.redBg,
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
   },
   errorBannerText: {
-    color: '#721c24',
+    color: T.red,
+    fontFamily: fontFamily.bodyMedium,
     fontSize: 14,
   },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#6b7280',
-    letterSpacing: 0.5,
-    marginTop: 18,
+  sectionHeader: {
+    marginTop: 16,
     marginBottom: 8,
   },
   card: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    padding: 14,
-    backgroundColor: '#fafafa',
+    marginBottom: 12,
+  },
+  alertCard: {
+    marginBottom: 10,
+  },
+  alertHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  alertTitle: {
+    fontSize: 14,
+    fontFamily: fontFamily.headingBold,
+    fontWeight: '700',
+    color: T.onSurface,
+    textTransform: 'capitalize',
   },
   emptyText: {
     fontSize: 13,
-    color: '#6b7280',
+    fontFamily: fontFamily.bodyRegular,
+    color: T.muted,
   },
   planTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111',
+    fontSize: 15,
+    fontFamily: fontFamily.headingBold,
+    fontWeight: '700',
+    color: T.onSurface,
   },
   planMeta: {
     fontSize: 12,
-    color: '#6b7280',
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurfaceVar,
     marginTop: 4,
   },
   planFileSection: {
     marginTop: 12,
   },
   viewPlanButton: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  viewPlanButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111',
+    alignSelf: 'flex-start',
   },
   planErrorText: {
-    color: '#dc2626',
+    color: T.red,
+    fontFamily: fontFamily.bodyMedium,
     fontSize: 13,
     marginTop: 6,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
 });

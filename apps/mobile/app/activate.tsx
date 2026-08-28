@@ -1,16 +1,22 @@
 import { useState } from 'react';
 import {
-  View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
+import {
+  T,
+  fontFamily,
+  Btn,
+  FieldLabel,
+  inputStyle,
+} from '../lib/design-system';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 
@@ -108,33 +114,36 @@ export default function ActivateScreen() {
           Enter the activation token your coach shared with you, then set a password.
         </Text>
 
-        <Text style={styles.label}>Activation Token</Text>
+        <FieldLabel>Activation Token</FieldLabel>
         <TextInput
           style={styles.input}
           value={token}
           onChangeText={setToken}
           placeholder="Paste your activation token"
+          placeholderTextColor={T.muted}
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="next"
         />
 
-        <Text style={styles.label}>Password</Text>
+        <FieldLabel>Password</FieldLabel>
         <TextInput
           style={styles.input}
           value={password}
           onChangeText={setPassword}
           placeholder="At least 8 characters"
+          placeholderTextColor={T.muted}
           secureTextEntry
           returnKeyType="next"
         />
 
-        <Text style={styles.label}>Confirm Password</Text>
+        <FieldLabel>Confirm Password</FieldLabel>
         <TextInput
           style={styles.input}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           placeholder="Re-enter password"
+          placeholderTextColor={T.muted}
           secureTextEntry
           returnKeyType="done"
           onSubmitEditing={handleActivate}
@@ -142,17 +151,15 @@ export default function ActivateScreen() {
 
         {error !== null && <Text style={styles.error}>{error}</Text>}
 
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+        <Btn
+          variant="primary"
           onPress={handleActivate}
           disabled={loading}
-          accessibilityRole="button"
           accessibilityLabel="Activate account"
+          style={styles.button}
         >
-          <Text style={styles.buttonText}>
-            {loading ? 'Activating…' : 'Activate Account'}
-          </Text>
-        </TouchableOpacity>
+          {loading ? <ActivityIndicator color={T.white} /> : 'Activate Account'}
+        </Btn>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -161,61 +168,40 @@ export default function ActivateScreen() {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: T.surface,
   },
   container: {
     flexGrow: 1,
     padding: 24,
     paddingTop: 64,
+    backgroundColor: T.surface,
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#111',
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    color: T.onSurface,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
+    fontFamily: fontFamily.bodyRegular,
+    color: T.onSurfaceVar,
     lineHeight: 20,
     marginBottom: 32,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 6,
-  },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    fontSize: 15,
-    color: '#111',
-    backgroundColor: '#fafafa',
+    ...inputStyle,
     marginBottom: 16,
   },
   error: {
-    color: '#dc2626',
+    color: T.red,
+    fontFamily: fontFamily.bodyMedium,
     fontSize: 14,
     marginBottom: 12,
     lineHeight: 20,
   },
   button: {
-    backgroundColor: '#111',
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
     marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

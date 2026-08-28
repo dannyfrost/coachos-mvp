@@ -14,6 +14,14 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
+import {
+  T,
+  fontFamily,
+  Card,
+  Btn,
+  FieldLabel,
+  inputStyle,
+} from '../../lib/design-system';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 
@@ -321,18 +329,12 @@ export default function MealsScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: '#fff' }}
+      style={{ flex: 1, backgroundColor: T.surface }}
     >
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          accessibilityRole="button"
-        >
-          <Text style={styles.backLink}>{'< Back'}</Text>
-        </TouchableOpacity>
         <Text style={styles.heading}>Today's Meals</Text>
 
         {fetchError && (
@@ -346,17 +348,17 @@ export default function MealsScreen() {
         {loading ? (
           <ActivityIndicator
             size="large"
-            color="#111"
+            color={T.primary}
             style={styles.loadingIndicator}
           />
         ) : (
           MEAL_TYPES.map(({ type, label }) => {
             const card = cards[type];
             return (
-              <View key={type} style={styles.mealCard}>
+              <Card key={type} style={styles.mealCard}>
                 <Text style={styles.mealTitle}>{label}</Text>
 
-                <Text style={styles.inputLabel}>Description</Text>
+                <FieldLabel>Description</FieldLabel>
                 <TextInput
                   style={[styles.input, styles.multiline]}
                   value={card.description}
@@ -372,79 +374,80 @@ export default function MealsScreen() {
                     }));
                   }}
                   placeholder={`What did you have for ${label.toLowerCase()}?`}
+                  placeholderTextColor={T.muted}
                   multiline
                   numberOfLines={3}
                   maxLength={1000}
                   textAlignVertical="top"
                 />
 
-                <Text style={styles.inputLabel}>Meal Photo</Text>
-                {card.photoUri ? (
-                  <View style={styles.photoRow}>
-                    <Image
-                      source={{ uri: card.photoUri }}
-                      style={styles.thumbnail}
-                    />
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={() => handleRemovePhoto(type)}
-                    >
-                      <Text style={styles.removeButtonText}>Remove</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : card.existingPhotoKey ? (
-                  <View style={styles.photoRow}>
+                <View style={{ marginTop: 8 }}>
+                  <FieldLabel>Meal Photo</FieldLabel>
+                  {card.photoUri ? (
+                    <View style={styles.photoRow}>
+                      <Image
+                        source={{ uri: card.photoUri }}
+                        style={styles.thumbnail}
+                      />
+                      <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={() => handleRemovePhoto(type)}
+                      >
+                        <Text style={styles.removeButtonText}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : card.existingPhotoKey ? (
+                    <View style={styles.photoRow}>
+                      <TouchableOpacity
+                        style={styles.photoButton}
+                        onPress={() => handlePickPhoto(type)}
+                      >
+                        <Text style={styles.photoButtonText}>
+                          Photo uploaded — tap to replace
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={() => handleRemovePhoto(type)}
+                      >
+                        <Text style={styles.removeButtonText}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
                     <TouchableOpacity
                       style={styles.photoButton}
                       onPress={() => handlePickPhoto(type)}
                     >
-                      <Text style={styles.photoButtonText}>
-                        Photo uploaded — tap to replace
-                      </Text>
+                      <Text style={styles.photoButtonText}>Add {label.toLowerCase()} photo</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={() => handleRemovePhoto(type)}
-                    >
-                      <Text style={styles.removeButtonText}>Remove</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.photoButton}
-                    onPress={() => handlePickPhoto(type)}
-                  >
-                    <Text style={styles.photoButtonText}>Add {label.toLowerCase()} photo</Text>
-                  </TouchableOpacity>
-                )}
+                  )}
+                </View>
 
                 {card.error !== null && (
                   <Text style={styles.errorText}>{card.error}</Text>
                 )}
 
                 <View style={styles.cardActionRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.saveButton,
-                      card.saving && styles.buttonDisabled,
-                    ]}
+                  <Btn
+                    variant="primary"
+                    small
                     onPress={() => handleSaveMeal(type)}
                     disabled={card.saving}
-                    accessibilityRole="button"
                     accessibilityLabel={`Save ${label}`}
+                    style={styles.saveButton}
                   >
                     {card.saving ? (
-                      <ActivityIndicator color="#fff" size="small" />
+                      <ActivityIndicator color={T.white} size="small" />
                     ) : (
-                      <Text style={styles.saveButtonText}>Save {label}</Text>
+                      `Save ${label}`
                     )}
-                  </TouchableOpacity>
+                  </Btn>
 
                   {card.success && (
                     <Text style={styles.successText}>Saved ✓</Text>
                   )}
                 </View>
-              </View>
+              </Card>
             );
           })
         )}
@@ -458,66 +461,47 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 24,
     paddingTop: 56,
-    backgroundColor: '#fff',
-  },
-  backLink: {
-    fontSize: 15,
-    color: '#1a56db',
-    marginBottom: 12,
+    backgroundColor: T.surface,
   },
   heading: {
     fontSize: 22,
-    fontWeight: '700',
-    color: '#111',
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    color: T.onSurface,
     marginBottom: 20,
   },
   loadingIndicator: {
     marginTop: 40,
   },
   errorBanner: {
-    backgroundColor: '#F8D7DA',
+    backgroundColor: T.redBg,
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
   },
   errorBannerText: {
-    color: '#721c24',
+    color: T.red,
+    fontFamily: fontFamily.bodyMedium,
     fontSize: 14,
   },
   mealCard: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    padding: 16,
-    backgroundColor: '#fafafa',
     marginBottom: 18,
   },
   mealTitle: {
     fontSize: 16,
+    fontFamily: fontFamily.headingBold,
     fontWeight: '700',
-    color: '#111',
+    color: T.onSurface,
     marginBottom: 12,
   },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 6,
-    marginTop: 6,
-  },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: '#111',
-    backgroundColor: '#fff',
+    ...inputStyle,
+    marginBottom: 8,
   },
   multiline: {
     minHeight: 72,
     paddingTop: 10,
+    textAlignVertical: 'top',
   },
   photoRow: {
     flexDirection: 'row',
@@ -530,35 +514,38 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: T.border,
   },
   removeButton: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#fff',
+    borderColor: T.border,
+    backgroundColor: T.white,
   },
   removeButtonText: {
     fontSize: 13,
-    color: '#555',
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurfaceVar,
   },
   photoButton: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: T.border,
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 14,
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: T.surfaceLow,
   },
   photoButtonText: {
     fontSize: 14,
-    color: '#555',
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurfaceVar,
   },
   errorText: {
-    color: '#dc2626',
+    color: T.red,
+    fontFamily: fontFamily.bodyMedium,
     fontSize: 13,
     marginTop: 8,
     lineHeight: 18,
@@ -570,22 +557,11 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   saveButton: {
-    backgroundColor: '#111',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
+    alignSelf: 'flex-start',
   },
   successText: {
-    color: '#16a34a',
+    color: T.success,
+    fontFamily: fontFamily.bodySemiBold,
     fontSize: 14,
     fontWeight: '600',
   },
