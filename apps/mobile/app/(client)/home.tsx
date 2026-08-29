@@ -21,6 +21,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 import * as ImagePicker from 'expo-image-picker';
+import { recognizeText } from 'rn-mlkit-ocr';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { router, useFocusEffect } from 'expo-router';
@@ -50,6 +51,11 @@ import {
   getTodayISO,
   getYesterdayISO,
 } from '../../lib/stats';
+import { extractWeightCandidate } from '../../lib/weightOcr';
+import {
+  initialWeightOcrState,
+  reduceWeightOcrState,
+} from '../../lib/weightOcrState';
 import CompletionRing from '../../components/CompletionRing';
 
 type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -95,6 +101,7 @@ type TodayLogArgs = {
   p_steps?: number;
   p_weight?: number;
   p_questions?: string;
+  p_weight_photo_key?: string;
 };
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
@@ -179,6 +186,9 @@ export default function HomeScreen() {
   const [weight, setWeight] = useState('');
   const [questions, setQuestions] = useState('');
 
+  const [weightOcrState, setWeightOcrState] = useState(initialWeightOcrState);
+  const [weightOcrBusy, setWeightOcrBusy] = useState(false);
+
   // Meal state for Today's Log quick-add
   const [selectedMealType, setSelectedMealType] = useState<MealType | null>(null);
   const [mealDescription, setMealDescription] = useState('');
@@ -218,6 +228,18 @@ export default function HomeScreen() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [mealDescriptionFocused, setMealDescriptionFocused] = useState(false);
+
+  const submitSuccessAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!submitSuccess) return;
+    submitSuccessAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(submitSuccessAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(1400),
+      Animated.timing(submitSuccessAnim, { toValue: 0, duration: 350, useNativeDriver: true }),
+    ]).start();
+  }, [submitSuccess, submitSuccessAnim]);
 
   // Field input refs for checklist scroll / focus
   const scrollViewRef = useRef<ScrollView>(null);
@@ -471,6 +493,43 @@ export default function HomeScreen() {
     }, [])
   );
 
+  const handleWeightCameraPress = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'PERMISSION_DENIED' }));
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    const photoUri = result.assets[0].uri;
+    setWeightOcrBusy(true);
+    try {
+      const ocrResult = await recognizeText(photoUri, 'latin');
+      const value = extractWeightCandidate(ocrResult);
+
+      if (value === null) {
+        setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+        return;
+      }
+
+      setWeightOcrState((s) =>
+        reduceWeightOcrState(s, { type: 'OCR_SUCCESS', photoUri, value })
+      );
+      setWeight(String(value));
+      setSubmitSuccess(false);
+    } catch {
+      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+    } finally {
+      setWeightOcrBusy(false);
+    }
+  };
+
   const handleMealTypeChange = (type: MealType | null) => {
     setSelectedMealType(type);
     setSubmitSuccess(false);
@@ -511,24 +570,6 @@ export default function HomeScreen() {
           },
         }));
       }
-    }
-  };
-
-  const handleRemovePhoto = () => {
-    setPhotoUri(null);
-    setPhotoKey(null);
-    setExistingPhotoKey(null);
-    setSubmitSuccess(false);
-    if (selectedMealType) {
-      setMealEntries((prev) => ({
-        ...prev,
-        [selectedMealType]: {
-          ...prev[selectedMealType],
-          photoUri: null,
-          photoKey: null,
-          existingPhotoKey: null,
-        },
-      }));
     }
   };
 
@@ -646,6 +687,60 @@ export default function HomeScreen() {
         setPhotoKey(confirmedPath);
       }
 
+      let finalWeightPhotoKey: string | null = null;
+      if (weightOcrState.retainedPhotoUri) {
+        if (!coachId || !userId || !session) {
+          setSubmitError('Weight photo upload failed. Try again.');
+          setSubmitting(false);
+          return;
+        }
+
+        const wExt = weightOcrState.retainedPhotoUri.toLowerCase().endsWith('.png')
+          ? 'png'
+          : 'jpeg';
+        const wContentType = wExt === 'png' ? 'image/png' : 'image/jpeg';
+
+        const wImageBlob = await fetch(weightOcrState.retainedPhotoUri).then((r) => r.blob());
+        const wSize = wImageBlob.size;
+
+        const wFilename = `${Date.now()}_weight.${wExt}`;
+        const wPath = `${coachId}/${userId}/${wFilename}`;
+
+        const wUrlRes = await fetch(`${API_BASE}/api/storage/signed-upload-url`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ path: wPath, content_type: wContentType, size: wSize }),
+        });
+
+        if (!wUrlRes.ok) {
+          setSubmitError('Weight photo upload failed. Try again.');
+          setSubmitting(false);
+          return;
+        }
+
+        const { signed_url: wSignedUrl, path: wConfirmedPath } = (await wUrlRes.json()) as {
+          signed_url: string;
+          path: string;
+        };
+
+        const wPutRes = await fetch(wSignedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': wContentType },
+          body: wImageBlob,
+        });
+
+        if (!wPutRes.ok) {
+          setSubmitError('Weight photo upload failed. Try again.');
+          setSubmitting(false);
+          return;
+        }
+
+        finalWeightPhotoKey = wConfirmedPath;
+      }
+
       const supabase = createMobileSupabaseClient();
       const todayISO = getTodayISO();
 
@@ -653,6 +748,7 @@ export default function HomeScreen() {
       if (parsedSteps !== null) args.p_steps = parsedSteps;
       if (parsedWeight !== null) args.p_weight = parsedWeight;
       if (questions.trim()) args.p_questions = questions.trim();
+      if (finalWeightPhotoKey !== null) args.p_weight_photo_key = finalWeightPhotoKey;
 
       let dailyLogSuccess = false;
       let mealSuccess = false;
@@ -675,6 +771,9 @@ export default function HomeScreen() {
           steps: parsedSteps,
           questions: questions.trim() || null,
         }));
+        if (finalWeightPhotoKey !== null) {
+          setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'RESET' }));
+        }
       }
 
       if (selectedMealType && userId && coachId) {
@@ -1221,19 +1320,65 @@ export default function HomeScreen() {
               />
 
               <FieldLabel>Weight (kg)</FieldLabel>
-              <TextInput
-                ref={weightInputRef}
-                style={[styles.input, { marginBottom: 0 }]}
-                value={weight}
-                onChangeText={(v) => {
-                  setWeight(v);
-                  setSubmitSuccess(false);
-                }}
-                placeholder="e.g. 72.5"
-                placeholderTextColor={T.muted}
-                keyboardType="decimal-pad"
-                returnKeyType="next"
-              />
+              <View style={styles.weightRow}>
+                <TextInput
+                  ref={weightInputRef}
+                  style={[styles.input, styles.weightInput, { marginBottom: 0 }]}
+                  value={weight}
+                  onChangeText={(v) => {
+                    setWeight(v);
+                    setSubmitSuccess(false);
+                    setWeightOcrState((s) => ({ ...s, suggestedValue: null }));
+                  }}
+                  placeholder="e.g. 72.5"
+                  placeholderTextColor={T.muted}
+                  keyboardType="decimal-pad"
+                  returnKeyType="next"
+                />
+                <TouchableOpacity
+                  style={styles.weightCameraButton}
+                  onPress={handleWeightCameraPress}
+                  disabled={weightOcrBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scan weight from a photo"
+                >
+                  {weightOcrBusy ? (
+                    <ActivityIndicator size="small" color={T.primary} />
+                  ) : (
+                    <Ionicons name="camera" size={20} color={T.primary} />
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {weight.length > 0 &&
+                weightOcrState.suggestedValue !== null &&
+                weight === String(weightOcrState.suggestedValue) && (
+                  <View style={styles.fromPhotoRow}>
+                    <Ionicons name="image" size={13} color={T.success} />
+                    <Text style={styles.fromPhotoText}>From photo</Text>
+                  </View>
+                )}
+
+              {weightOcrState.status === 'retake_prompt' && (
+                <View style={styles.retakeBanner}>
+                  <Text style={styles.retakeBannerText}>
+                    Couldn't read the number — try again?
+                  </Text>
+                  <TouchableOpacity
+                    onPress={handleWeightCameraPress}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retake weight photo"
+                  >
+                    <Text style={styles.retakeBannerAction}>Retake</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {weightOcrState.status === 'manual_fallback' && (
+                <Text style={styles.manualFallbackHint}>
+                  Photo saved — enter your weight below.
+                </Text>
+              )}
             </Card>
 
             {/* Nutrition Card */}
@@ -1277,7 +1422,13 @@ export default function HomeScreen() {
               <FieldLabel>Meal description</FieldLabel>
               <TextInput
                 ref={mealInputRef}
-                style={[styles.input, styles.multiline]}
+                style={[
+                  styles.input,
+                  styles.multiline,
+                  mealDescription.trim().length > 0 &&
+                    !mealDescriptionFocused &&
+                    styles.inputSaved,
+                ]}
                 value={mealDescription}
                 onChangeText={(v) => {
                   setMealDescription(v);
@@ -1292,6 +1443,8 @@ export default function HomeScreen() {
                     }));
                   }
                 }}
+                onFocus={() => setMealDescriptionFocused(true)}
+                onBlur={() => setMealDescriptionFocused(false)}
                 placeholder={
                   selectedMealType
                     ? `What did you have for ${selectedMealType}?`
@@ -1305,38 +1458,27 @@ export default function HomeScreen() {
               />
 
               <FieldLabel>Meal photo</FieldLabel>
-              {photoUri ? (
+              {photoUri || existingPhotoKey ? (
                 <View style={[styles.photoRow, { marginBottom: 0 }]}>
-                  <Image
-                    source={{ uri: photoUri }}
-                    style={styles.thumbnail}
-                  />
+                  {photoUri ? (
+                    <Image
+                      source={{ uri: photoUri }}
+                      style={styles.thumbnail}
+                    />
+                  ) : (
+                    <View style={styles.photoChip}>
+                      <Ionicons name="image" size={16} color={T.onSurfaceVar} />
+                      <Text style={styles.photoChipText}>Photo added</Text>
+                    </View>
+                  )}
                   <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={handleRemovePhoto}
-                  >
-                    <Text style={styles.removeButtonText}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : existingPhotoKey ? (
-                <View style={[styles.photoRow, { marginBottom: 0 }]}>
-                  <TouchableOpacity
-                    style={[styles.photoButton, { flex: 1, marginBottom: 0 }]}
+                    style={styles.editPhotoButton}
                     onPress={handlePickPhoto}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit meal photo"
                   >
-                    <Text
-                      style={styles.photoButtonText}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                    >
-                      Photo uploaded — tap to replace
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.removeButton, { flexShrink: 0 }]}
-                    onPress={handleRemovePhoto}
-                  >
-                    <Text style={styles.removeButtonText}>Remove</Text>
+                    <Ionicons name="pencil" size={15} color={T.primary} />
+                    <Text style={styles.editPhotoButtonText}>Edit</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -1403,9 +1545,11 @@ export default function HomeScreen() {
               )}
             </Btn>
 
-            {submitSuccess && (
-              <Text style={styles.successText}>Logged ✓</Text>
-            )}
+            <Animated.Text
+              style={[styles.successText, { opacity: submitSuccessAnim }]}
+            >
+              Logged ✓
+            </Animated.Text>
           </>
         )}
       </ScrollView>
@@ -1879,6 +2023,64 @@ const styles = StyleSheet.create({
     paddingTop: 11,
     textAlignVertical: 'top',
   },
+  weightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  weightInput: {
+    flex: 1,
+  },
+  weightCameraButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: T.border,
+    backgroundColor: T.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fromPhotoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
+  fromPhotoText: {
+    fontSize: 12,
+    fontFamily: fontFamily.bodyMedium,
+    color: T.success,
+  },
+  retakeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: T.redBg,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 8,
+  },
+  retakeBannerText: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodyMedium,
+    color: T.red,
+    flex: 1,
+    marginRight: 8,
+  },
+  retakeBannerAction: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodySemiBold,
+    fontWeight: '600',
+    color: T.primary,
+  },
+  manualFallbackHint: {
+    fontSize: 12,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.muted,
+    marginTop: 6,
+  },
   photoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1892,7 +2094,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.border,
   },
-  removeButton: {
+  photoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: T.surfaceLow,
+  },
+  photoChipText: {
+    fontSize: 14,
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurfaceVar,
+  },
+  editPhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -1900,9 +2119,13 @@ const styles = StyleSheet.create({
     borderColor: T.border,
     backgroundColor: T.white,
   },
-  removeButtonText: {
+  editPhotoButtonText: {
     fontSize: 14,
     fontFamily: fontFamily.bodyMedium,
+    color: T.primary,
+  },
+  inputSaved: {
+    backgroundColor: T.surfaceLow,
     color: T.onSurfaceVar,
   },
   photoButton: {

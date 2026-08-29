@@ -402,6 +402,7 @@ export type Database = {
           questions: string | null
           steps: number | null
           weight: number | null
+          weight_photo_key: string | null
         }
         Insert: {
           client_id: string
@@ -414,6 +415,7 @@ export type Database = {
           questions?: string | null
           steps?: number | null
           weight?: number | null
+          weight_photo_key?: string | null
         }
         Update: {
           client_id?: string
@@ -426,6 +428,7 @@ export type Database = {
           questions?: string | null
           steps?: number | null
           weight?: number | null
+          weight_photo_key?: string | null
         }
         Relationships: [
           {
@@ -1150,6 +1153,7 @@ export type Database = {
           p_questions?: string
           p_steps?: number
           p_weight?: number
+          p_weight_photo_key?: string
         }
         Returns: {
           client_id: string
@@ -1162,6 +1166,7 @@ export type Database = {
           questions: string | null
           steps: number | null
           weight: number | null
+          weight_photo_key: string | null
         }[]
         SetofOptions: {
           from: "*"

@@ -14,7 +14,14 @@
       "expo-router",
       "expo-font",
       "expo-image-picker",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "rn-mlkit-ocr",
+        {
+          "ocrModels": ["latin"],
+          "ocrUseBundled": true
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": false,

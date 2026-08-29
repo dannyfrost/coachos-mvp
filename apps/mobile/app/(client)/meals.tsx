@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,10 @@ import {
   Platform,
   StyleSheet,
   Image,
+  Animated,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
@@ -90,6 +92,25 @@ export default function MealsScreen() {
       success: false,
     },
   });
+
+  const [focusedField, setFocusedField] = useState<MealType | null>(null);
+
+  const successAnimRefs = useRef<Record<MealType, Animated.Value>>({
+    breakfast: new Animated.Value(0),
+    lunch: new Animated.Value(0),
+    dinner: new Animated.Value(0),
+    snack: new Animated.Value(0),
+  });
+
+  const playSuccessAnim = (type: MealType) => {
+    const anim = successAnimRefs.current[type];
+    anim.setValue(0);
+    Animated.sequence([
+      Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(1400),
+      Animated.timing(anim, { toValue: 0, duration: 350, useNativeDriver: true }),
+    ]).start();
+  };
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -187,20 +208,6 @@ export default function MealsScreen() {
         },
       }));
     }
-  };
-
-  const handleRemovePhoto = (type: MealType) => {
-    setCards((prev) => ({
-      ...prev,
-      [type]: {
-        ...prev[type],
-        photoUri: null,
-        photoKey: null,
-        existingPhotoKey: null,
-        success: false,
-        error: null,
-      },
-    }));
   };
 
   const handleSaveMeal = async (type: MealType) => {
@@ -322,6 +329,7 @@ export default function MealsScreen() {
           error: null,
         },
       }));
+      playSuccessAnim(type);
     } catch {
       setCards((prev) => ({
         ...prev,
@@ -365,13 +373,22 @@ export default function MealsScreen() {
         ) : (
           MEAL_TYPES.map(({ type, label }) => {
             const card = cards[type];
+            const hasSavedDescription = card.description.trim().length > 0;
+            const isFocused = focusedField === type;
+            const showMutedTint = hasSavedDescription && !isFocused;
+            const hasPhoto = !!card.photoUri || !!card.existingPhotoKey;
+
             return (
               <Card key={type} style={styles.mealCard}>
                 <Text style={styles.mealTitle}>{label}</Text>
 
                 <FieldLabel>Description</FieldLabel>
                 <TextInput
-                  style={[styles.input, styles.multiline]}
+                  style={[
+                    styles.input,
+                    styles.multiline,
+                    showMutedTint && styles.inputSaved,
+                  ]}
                   value={card.description}
                   onChangeText={(v) => {
                     setCards((prev) => ({
@@ -384,6 +401,8 @@ export default function MealsScreen() {
                       },
                     }));
                   }}
+                  onFocus={() => setFocusedField(type)}
+                  onBlur={() => setFocusedField((f) => (f === type ? null : f))}
                   placeholder={`What did you have for ${label.toLowerCase()}?`}
                   placeholderTextColor={T.muted}
                   multiline
@@ -394,34 +413,27 @@ export default function MealsScreen() {
 
                 <View style={{ marginTop: 8 }}>
                   <FieldLabel>Meal Photo</FieldLabel>
-                  {card.photoUri ? (
+                  {hasPhoto ? (
                     <View style={styles.photoRow}>
-                      <Image
-                        source={{ uri: card.photoUri }}
-                        style={styles.thumbnail}
-                      />
+                      {card.photoUri ? (
+                        <Image
+                          source={{ uri: card.photoUri }}
+                          style={styles.thumbnail}
+                        />
+                      ) : (
+                        <View style={styles.photoChip}>
+                          <Ionicons name="image" size={16} color={T.onSurfaceVar} />
+                          <Text style={styles.photoChipText}>Photo added</Text>
+                        </View>
+                      )}
                       <TouchableOpacity
-                        style={styles.removeButton}
-                        onPress={() => handleRemovePhoto(type)}
-                      >
-                        <Text style={styles.removeButtonText}>Remove</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : card.existingPhotoKey ? (
-                    <View style={styles.photoRow}>
-                      <TouchableOpacity
-                        style={styles.photoButton}
+                        style={styles.editPhotoButton}
                         onPress={() => handlePickPhoto(type)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${label.toLowerCase()} photo`}
                       >
-                        <Text style={styles.photoButtonText}>
-                          Photo uploaded — tap to replace
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.removeButton}
-                        onPress={() => handleRemovePhoto(type)}
-                      >
-                        <Text style={styles.removeButtonText}>Remove</Text>
+                        <Ionicons name="pencil" size={15} color={T.primary} />
+                        <Text style={styles.editPhotoButtonText}>Edit</Text>
                       </TouchableOpacity>
                     </View>
                   ) : (
@@ -454,9 +466,14 @@ export default function MealsScreen() {
                     )}
                   </Btn>
 
-                  {card.success && (
-                    <Text style={styles.successText}>Saved ✓</Text>
-                  )}
+                  <Animated.Text
+                    style={[
+                      styles.successText,
+                      { opacity: successAnimRefs.current[type] },
+                    ]}
+                  >
+                    Saved ✓
+                  </Animated.Text>
                 </View>
               </Card>
             );
@@ -514,6 +531,11 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     textAlignVertical: 'top',
   },
+  inputSaved: {
+    backgroundColor: T.surfaceLow,
+    color: T.onSurfaceVar,
+    borderBottomColor: T.border,
+  },
   photoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -527,7 +549,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.border,
   },
-  removeButton: {
+  photoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: T.surfaceLow,
+  },
+  photoChipText: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodyMedium,
+    color: T.onSurfaceVar,
+  },
+  editPhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
@@ -535,10 +574,10 @@ const styles = StyleSheet.create({
     borderColor: T.border,
     backgroundColor: T.white,
   },
-  removeButtonText: {
+  editPhotoButtonText: {
     fontSize: 13,
     fontFamily: fontFamily.bodyMedium,
-    color: T.onSurfaceVar,
+    color: T.primary,
   },
   photoButton: {
     borderWidth: 1,

@@ -61,7 +61,7 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
 
     supabase
       .from('daily_logs')
-      .select('id, log_date, steps, weight, meal_description, meal_photo_key, questions')
+      .select('id, log_date, steps, weight, meal_description, meal_photo_key, questions, weight_photo_key')
       .eq('client_id', params.id)
       .order('log_date', { ascending: false })
       .limit(30),
@@ -96,8 +96,9 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
   if (!platformUser) redirect('/clients');
 
   const logPhotoKeys = (logs ?? []).map((l) => l.meal_photo_key);
+  const weightPhotoKeys = (logs ?? []).map((l) => l.weight_photo_key);
   const mealPhotoKeys = (mealEntries ?? []).map((m) => m.photo_key);
-  const photoKeys = [...logPhotoKeys, ...mealPhotoKeys].filter(
+  const photoKeys = [...logPhotoKeys, ...weightPhotoKeys, ...mealPhotoKeys].filter(
     (k): k is string => k !== null && k !== undefined
   );
 
@@ -152,6 +153,7 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
       meal_description: l.meal_description ?? null,
       meal_photo_key: l.meal_photo_key ?? null,
       questions: l.questions ?? null,
+      weight_photo_key: l.weight_photo_key ?? null,
     })),
     photoUrlMap,
     planAssignments: (planAssignments ?? []).map((p) => ({

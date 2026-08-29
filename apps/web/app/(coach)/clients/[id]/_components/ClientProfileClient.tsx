@@ -37,6 +37,7 @@ type LogData = {
   meal_description: string | null
   meal_photo_key: string | null
   questions: string | null
+  weight_photo_key: string | null
 }
 
 type PlanAssignmentData = {
@@ -334,6 +335,7 @@ export default function ClientProfileClient({
                 const dayMeals = groupedMealsByDate[log.log_date] ?? []
                 const dayMealWithPhoto = dayMeals.find(m => m.photo_key)
                 const photoUrl = dayMealWithPhoto?.photo_key ? photoUrlMap[dayMealWithPhoto.photo_key] : undefined
+                const weightPhotoUrl = log.weight_photo_key ? photoUrlMap[log.weight_photo_key] : undefined
                 const mealSummary = dayMeals.length > 0
                   ? dayMeals.filter(m => m.description).map(m => m.description).join(' · ') || null
                   : null
@@ -342,7 +344,20 @@ export default function ClientProfileClient({
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
                       <span style={{ fontFamily: font.heading, fontWeight: 700, fontSize: 14, color: T.onSurface }}>{fmtLogDate(log.log_date)}</span>
                       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 12, color: T.muted }}>{log.weight != null ? `${log.weight.toFixed(1)} kg` : '—'}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 12, color: T.muted }}>{log.weight != null ? `${log.weight.toFixed(1)} kg` : '—'}</span>
+                          {weightPhotoUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={weightPhotoUrl}
+                              alt="Weight scale photo"
+                              width={24}
+                              height={24}
+                              style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 5, cursor: 'pointer' }}
+                              onClick={() => setLightboxUrl(weightPhotoUrl)}
+                            />
+                          )}
+                        </div>
                         <span style={{ fontSize: 12, color: T.muted }}>{log.steps ?? '—'} steps</span>
                         {photoUrl && (
                           // eslint-disable-next-line @next/next/no-img-element
