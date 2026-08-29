@@ -20,7 +20,7 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
 
   const { data: clientRow, error: clientError } = await supabase
     .from('clients')
-    .select('id, coach_id, onboarding_completed, created_at')
+    .select('id, coach_id, onboarding_completed, created_at, age, height_cm, condition_notes')
     .eq('id', params.id)
     .eq('coach_id', user.id)
     .single();
@@ -119,6 +119,9 @@ export default async function ClientProfilePage({ params }: { params: { id: stri
     clientId: clientRow.id,
     clientCreatedAt: clientRow.created_at,
     onboardingCompleted: clientRow.onboarding_completed,
+    age: clientRow.age ?? null,
+    heightCm: clientRow.height_cm ?? null,
+    conditionNotes: clientRow.condition_notes ?? null,
     platformUser: {
       full_name: platformUser.full_name,
       email: platformUser.email,

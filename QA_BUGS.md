@@ -148,7 +148,7 @@ Regression test:
 
 Severity: P2
 
-Status: OPEN
+Status: FIXED — confirmed on real device by user (screenshot showed "Remov..." clipped at right edge, matching this exact bug)
 
 Environment:
 - Device: real Android tester device (screenshot-reported by user)
@@ -169,10 +169,10 @@ Likely root cause:
 - UI — `photoRow` style in `apps/mobile/app/(client)/home.tsx` lacks `flex`/`flexShrink` constraints on its children, so a long label pushes siblings out of bounds instead of wrapping/shrinking.
 
 Fix:
-- Not yet applied. Planned: add `flex: 1, flexShrink: 1` (with `numberOfLines`/`ellipsizeMode` on the label Text) to `photoRow` children.
+- Applied: `photoButton` gets `flex: 1` when inside `photoRow` (existingPhotoKey variant), its label gets `numberOfLines={1}`/`ellipsizeMode="tail"`, and `removeButton` gets `flexShrink: 0` so its label never gets squeezed. `tsc --noEmit` clean.
 
 Regression test:
-- Pending fix.
+- Pending a new build + on-device confirmation.
 
 ---
 
@@ -215,7 +215,7 @@ Regression test:
 
 Severity: P1 (visually breaks navigation, not yet root-caused)
 
-Status: OPEN
+Status: FIXED — pending on-device re-verification. User pinpointed the exact trigger: the meal-type picker ("wheel of selection") popup in the Daily Log form.
 
 Environment:
 - Device: **confirmed on real physical Android phone**, not emulator-only (explicitly confirmed by user via direct question)
@@ -232,13 +232,13 @@ Actual:
 - User-reported: "layout design doesn't respect the screen! ... like another screen under it was moving" — a ghost/duplicate of the previous screen appears to shift underneath the incoming screen during the transition.
 
 Likely root cause:
-- Not yet determined. Suspected Navigation/Lifecycle — possibly the root `Stack` slide animation (`animation:'slide_from_right'` in `apps/mobile/app/_layout.tsx`) compositing with the custom `Tabs`/`CustomTabBar` sliding indicator animation at the same time, producing a double-transition. Not confirmed — investigation was interrupted mid-reproduction when the BlueStacks adb connection dropped.
+- Confirmed via user's precise repro (happens specifically when the meal-type picker opens): React Native's native `<Modal>` component (used for that picker in `apps/mobile/app/(client)/home.tsx`) renders as its own separate native window/surface on Android, composited independently from the JS-driven screen underneath. With a custom `Animated`-driven tab bar and root-`Stack` slide transition also active in the same screen, the native Modal's own open transition can visibly desync from the underlying screen's paint, producing the double-image/ghosting artifact. This is a well-known class of issue with RN's native `Modal` on Android in apps with custom animated chrome.
 
 Fix:
-- Not yet applied — pending reproduction.
+- Replaced the native `<Modal>` with an in-tree, JS-driven overlay: an absolutely-positioned `Animated.View` backdrop + sliding `Animated.View` sheet rendered as a sibling of the screen's `ScrollView` (inside the same `KeyboardAvoidingView`), so there's only ever one render surface — no separate native window to desync from. Added a `hardwareBackPress` listener to preserve Android back-button-closes-picker behavior that the native Modal previously gave for free. `tsc --noEmit` clean.
 
 Regression test:
-- Pending fix.
+- Pending a new build + on-device confirmation that the ghosting no longer appears when opening the meal-type picker, and that tap-outside/close-button/hardware-back/confirm all still dismiss it correctly.
 
 ---
 
@@ -397,6 +397,63 @@ Fix:
 
 Regression test:
 - Pending fix + device availability.
+
+---
+
+## BUG-013 — Weight/Steps trend charts look broken with exactly one data point
+
+Severity: P3
+
+Status: FIXED
+
+Environment:
+- Device: real Android tester device (user-reported screenshot: "progress have no real value or connection")
+
+Steps:
+1. As a client with only one day of logged weight/steps, open the Progress screen.
+
+Expected:
+- A single-day state that reads as intentional, not broken.
+
+Actual:
+- `WeightTrendChart`/`StepsBarChart` showed a single floating dot/bar, plus a date range row showing the same date twice (e.g. "29 Aug ... 29 Aug"), and steps showed "avg 10,000/day" from a single sample — mathematically correct but reads as a bug.
+
+Likely root cause:
+- UI — no distinct empty/sparse-state treatment for `validPoints.length === 1`, only for `=== 0`.
+
+Fix:
+- Both charts now render a single centered hint ("{date} · Log more days to see your trend") instead of the duplicate date row when there's exactly one point, and `StepsBarChart` hides the "avg X/day" label in that case. `tsc --noEmit` clean.
+
+Regression test:
+- Pending a new build + on-device confirmation.
+
+---
+
+## BUG-014 — Age/height/medical-conditions are never collected anywhere, on either app
+
+Severity: P2 (product gap, not a code defect)
+
+Status: FIXED. User decided: client-only editing, captured once during Activation and editable anytime from Settings. `tsc --noEmit` clean on both `apps/mobile` and `apps/web`.
+
+Environment:
+- N/A (schema + code inspection, confirmed by user screenshot of mobile Settings "Profile Details": Coach "Not assigned", Age "Not set", Conditions "None reported" — always, for every client)
+
+Evidence:
+- `clients` table has `age` (integer, nullable) and `condition_notes` (text, nullable) columns. **No `height` column exists at all.**
+- No UI anywhere — not the client mobile app, not the coach web app — ever writes to `age` or `condition_notes`. The mobile Settings screen only reads them (read-only display, always showing the empty placeholder). The coach's `clients/[id]/page.tsx` doesn't even select these columns, so `ClientProfileClient.tsx` can't display them either.
+- These fields are permanently stuck at their default empty state for every client that will ever exist, unless someone writes directly to the DB (as QA did for test accounts).
+
+Likely root cause:
+- Missing feature — this was apparently scoped in the data model (age/condition_notes columns exist) but the actual capture UI was never built on either platform, and `height` was never modeled at all.
+
+Fix:
+- Migration `019_client_profile_fields.sql` applied to production: added `clients.height_cm` (smallint, 50-250 range check) and `clients.age` range check (1-120); added `update_client_profile(p_age, p_height_cm, p_condition_notes)` RPC (`SECURITY DEFINER`, client-role-only, scoped strictly to `auth.uid()` — no direct table UPDATE grant given to the client role, matching the existing `update_today_log` convention). Regenerated `packages/supabase/database.types.ts`.
+- `apps/mobile/app/activate.tsx`: added optional Age/Height/Conditions fields to the activation form; calls the RPC (best-effort, non-blocking) right after the post-activation session is established.
+- `apps/mobile/app/(client)/settings.tsx`: "PROFILE DETAILS" card is now editable via an "Edit" link — inline Age/Height/Conditions inputs with the same validation ranges, Save/Cancel.
+- `apps/web/app/(coach)/clients/[id]/page.tsx` + `ClientProfileClient.tsx`: coach can now see Age/Height/Conditions (read-only) in a compact strip above the Overview/Meals/Report tabs — previously not queried or displayed at all.
+
+Regression test:
+- Pending a new mobile build + on-device confirmation (activate a fresh test client with age/height/conditions filled in, confirm they appear in Settings and on the coach's client page). Web-side change confirmed by `tsc --noEmit`; needs a real page load to visually confirm layout once a browser-test path exists.
 
 ---
 

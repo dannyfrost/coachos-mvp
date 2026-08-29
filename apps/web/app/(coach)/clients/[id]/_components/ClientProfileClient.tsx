@@ -76,6 +76,9 @@ export type ClientProfileClientProps = {
   clientId: string
   clientCreatedAt: string
   onboardingCompleted: boolean
+  age: number | null
+  heightCm: number | null
+  conditionNotes: string | null
   platformUser: PlatformUserData
   subscription: SubscriptionData
   flashCard: FlashCardData
@@ -113,6 +116,9 @@ const ABSENCE_LEVEL_STATUS: Record<string, string> = { '24h': 'pending', '48h': 
 export default function ClientProfileClient({
   clientId,
   clientCreatedAt,
+  age,
+  heightCm,
+  conditionNotes,
   platformUser,
   subscription,
   flashCard,
@@ -286,6 +292,12 @@ export default function ClientProfileClient({
             )}
           </div>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 20, padding: '10px 16px', background: T.surfaceLow, borderRadius: 10, marginBottom: 18, fontSize: 12, flexWrap: 'wrap' }}>
+        <span><span style={{ color: T.muted }}>Age: </span><span style={{ fontWeight: 600, color: T.onSurface }}>{age !== null ? `${age} yrs` : 'Not set'}</span></span>
+        <span><span style={{ color: T.muted }}>Height: </span><span style={{ fontWeight: 600, color: T.onSurface }}>{heightCm !== null ? `${heightCm} cm` : 'Not set'}</span></span>
+        <span><span style={{ color: T.muted }}>Conditions: </span><span style={{ fontWeight: 600, color: T.onSurface }}>{conditionNotes && conditionNotes.trim().length > 0 ? conditionNotes : 'None reported'}</span></span>
       </div>
 
       <div style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${T.border}`, marginBottom: 18 }}>

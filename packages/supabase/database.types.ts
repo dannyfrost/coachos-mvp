@@ -256,6 +256,7 @@ export type Database = {
           coach_id: string
           condition_notes: string | null
           created_at: string
+          height_cm: number | null
           id: string
           onboarding_completed: boolean
         }
@@ -266,6 +267,7 @@ export type Database = {
           coach_id: string
           condition_notes?: string | null
           created_at?: string
+          height_cm?: number | null
           id: string
           onboarding_completed?: boolean
         }
@@ -276,6 +278,7 @@ export type Database = {
           coach_id?: string
           condition_notes?: string | null
           created_at?: string
+          height_cm?: number | null
           id?: string
           onboarding_completed?: boolean
         }
@@ -1088,6 +1091,30 @@ export type Database = {
         }
       }
       unpause_client: { Args: { p_client_id: string }; Returns: undefined }
+      update_client_profile: {
+        Args: {
+          p_age?: number
+          p_condition_notes?: string
+          p_height_cm?: number
+        }
+        Returns: {
+          activation_expires_at: string | null
+          activation_token_hash: string | null
+          age: number | null
+          coach_id: string
+          condition_notes: string | null
+          created_at: string
+          height_cm: number | null
+          id: string
+          onboarding_completed: boolean
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "clients"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       update_flash_card_notes: {
         Args: { p_card_id: string; p_notes: string }
         Returns: {
