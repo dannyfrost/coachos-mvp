@@ -35,7 +35,7 @@ export default function ChangePasswordScreen() {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session?.user?.id) {
-        router.replace('/activate');
+        router.replace('/login');
       }
     }
     checkSession();

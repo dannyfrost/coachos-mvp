@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Text,
   TextInput,
@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
@@ -42,8 +43,17 @@ export default function ActivateScreen() {
   const [token, setToken] = useState(params.token ?? '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [age, setAge] = useState('');
+  const [heightCm, setHeightCm] = useState('');
+  const [conditionNotes, setConditionNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (params.token) {
+      setToken(params.token);
+    }
+  }, [params.token]);
 
   async function handleActivate() {
     setError(null);
@@ -90,6 +100,21 @@ export default function ActivateScreen() {
       if (sessionError) {
         setError('Activation complete but could not sign in. Please try again.');
         return;
+      }
+
+      const parsedAge = age.trim() ? parseInt(age, 10) : undefined;
+      const parsedHeight = heightCm.trim() ? parseInt(heightCm, 10) : undefined;
+      const trimmedNotes = conditionNotes.trim() || undefined;
+      if (parsedAge !== undefined || parsedHeight !== undefined || trimmedNotes !== undefined) {
+        try {
+          await supabase.rpc('update_client_profile', {
+            p_age: parsedAge,
+            p_height_cm: parsedHeight,
+            p_condition_notes: trimmedNotes,
+          });
+        } catch {
+          // Non-blocking: profile info can always be added later from Settings.
+        }
       }
 
       router.replace('/(client)/home');
@@ -149,6 +174,44 @@ export default function ActivateScreen() {
           onSubmitEditing={handleActivate}
         />
 
+        <Text style={styles.sectionHint}>
+          Optional — helps your coach personalize your plan. You can also add this later in Settings.
+        </Text>
+
+        <FieldLabel>Age</FieldLabel>
+        <TextInput
+          style={styles.input}
+          value={age}
+          onChangeText={setAge}
+          placeholder="e.g. 32"
+          placeholderTextColor={T.muted}
+          keyboardType="number-pad"
+          returnKeyType="next"
+        />
+
+        <FieldLabel>Height (cm)</FieldLabel>
+        <TextInput
+          style={styles.input}
+          value={heightCm}
+          onChangeText={setHeightCm}
+          placeholder="e.g. 175"
+          placeholderTextColor={T.muted}
+          keyboardType="number-pad"
+          returnKeyType="next"
+        />
+
+        <FieldLabel>Medical conditions</FieldLabel>
+        <TextInput
+          style={[styles.input, styles.multiline]}
+          value={conditionNotes}
+          onChangeText={setConditionNotes}
+          placeholder="e.g. Knee injury, asthma — leave blank if none"
+          placeholderTextColor={T.muted}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+
         {error !== null && <Text style={styles.error}>{error}</Text>}
 
         <Btn
@@ -160,6 +223,18 @@ export default function ActivateScreen() {
         >
           {loading ? <ActivityIndicator color={T.white} /> : 'Activate Account'}
         </Btn>
+
+        <TouchableOpacity
+          onPress={() => router.push('/login')}
+          style={styles.switchLink}
+          accessibilityRole="button"
+          accessibilityLabel="Already activated? Log in"
+        >
+          <Text style={styles.switchLinkText}>
+            Already activated?{' '}
+            <Text style={styles.switchLinkHighlight}>Log in</Text>
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -194,6 +269,18 @@ const styles = StyleSheet.create({
     ...inputStyle,
     marginBottom: 16,
   },
+  multiline: {
+    minHeight: 80,
+    paddingTop: 12,
+  },
+  sectionHint: {
+    fontSize: 12,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.muted,
+    marginTop: 8,
+    marginBottom: 16,
+    lineHeight: 17,
+  },
   error: {
     color: T.red,
     fontFamily: fontFamily.bodyMedium,
@@ -203,5 +290,19 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 8,
+  },
+  switchLink: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  switchLinkText: {
+    fontSize: 14,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.onSurfaceVar,
+  },
+  switchLinkHighlight: {
+    fontFamily: fontFamily.bodySemiBold,
+    fontWeight: '600',
+    color: T.primary,
   },
 });

@@ -32,6 +32,12 @@
         "projectId": "f2b1203c-0a90-4d4a-99e5-8d7a16546a20"
       }
     },
-    "owner": "silver-shadow"
+    "owner": "silver-shadow",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f2b1203c-0a90-4d4a-99e5-8d7a16546a20"
+    }
   }
 }

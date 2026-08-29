@@ -28,7 +28,7 @@ export default function Index() {
   return hasSession ? (
     <Redirect href="/(client)/home" />
   ) : (
-    <Redirect href="/activate" />
+    <Redirect href="/login" />
   );
 }
 

@@ -5,12 +5,14 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Image,
-  Modal,
+  Animated,
+  BackHandler,
   LayoutAnimation,
   UIManager,
 } from 'react-native';
@@ -185,6 +187,25 @@ export default function HomeScreen() {
   const [existingPhotoKey, setExistingPhotoKey] = useState<string | null>(null);
   const [pickerModalVisible, setPickerModalVisible] = useState(false);
   const [pendingMealType, setPendingMealType] = useState<MealType | null>(null);
+  const pickerOverlayAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!pickerModalVisible) {
+      pickerOverlayAnim.setValue(0);
+      return;
+    }
+    Animated.timing(pickerOverlayAnim, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setPickerModalVisible(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [pickerModalVisible, pickerOverlayAnim]);
 
   const [mealEntries, setMealEntries] = useState<Record<MealType, MealEntryState>>({
     breakfast: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
@@ -205,15 +226,15 @@ export default function HomeScreen() {
   const mealInputRef = useRef<TextInput>(null);
   const questionsInputRef = useRef<TextInput>(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setFetchError(false);
 
     const supabase = createMobileSupabaseClient();
     const { data: { session: sess } } = await supabase.auth.getSession();
 
     if (!sess?.user?.id) {
-      router.replace('/activate');
+      router.replace('/login');
       return;
     }
 
@@ -394,6 +415,13 @@ export default function HomeScreen() {
       setLoading(false);
     }
   }, []);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData({ silent: true });
+    setRefreshing(false);
+  }, [loadData]);
 
   useEffect(() => {
     loadData();
@@ -721,9 +749,9 @@ export default function HomeScreen() {
 
   // ── Derived completion states for Checklist ──
   const weightDone =
-    todayLog?.weight !== null || (weight.trim().length > 0 && submitSuccess);
+    (todayLog?.weight ?? null) !== null || (weight.trim().length > 0 && submitSuccess);
   const stepsDone =
-    todayLog?.steps !== null || (steps.trim().length > 0 && submitSuccess);
+    (todayLog?.steps ?? null) !== null || (steps.trim().length > 0 && submitSuccess);
   const mealsDone =
     Object.values(mealEntries).some((m) => m.description.trim().length > 0) ||
     (mealDescription.trim().length > 0 && submitSuccess);
@@ -885,6 +913,9 @@ export default function HomeScreen() {
         ref={scrollViewRef}
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.primary} />
+        }
       >
         {/* ── Greeting Header ── */}
         <LinearGradient
@@ -1243,81 +1274,6 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-down" size={18} color={T.onSurfaceVar} />
               </TouchableOpacity>
 
-              <Modal
-                visible={pickerModalVisible}
-                animationType="slide"
-                transparent
-                onRequestClose={() => setPickerModalVisible(false)}
-              >
-                <TouchableOpacity
-                  style={styles.modalOverlay}
-                  activeOpacity={1}
-                  onPress={() => setPickerModalVisible(false)}
-                >
-                  <TouchableOpacity
-                    activeOpacity={1}
-                    style={styles.modalSheet}
-                    onPress={(e) => e.stopPropagation()}
-                  >
-                    <View style={styles.modalHeader}>
-                      <Text style={styles.modalTitle}>Select Meal Type</Text>
-                      <TouchableOpacity
-                        onPress={() => setPickerModalVisible(false)}
-                        style={styles.modalCloseButton}
-                        accessibilityRole="button"
-                        accessibilityLabel="Close meal picker"
-                      >
-                        <Ionicons name="close" size={22} color={T.onSurfaceVar} />
-                      </TouchableOpacity>
-                    </View>
-
-                    {MEAL_OPTIONS.map((opt) => {
-                      const isSelected = pendingMealType === opt.type;
-                      return (
-                        <TouchableOpacity
-                          key={opt.type}
-                          style={[
-                            styles.mealOptionRow,
-                            isSelected && styles.mealOptionRowSelected,
-                          ]}
-                          onPress={() => setPendingMealType(opt.type)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: isSelected }}
-                        >
-                          <Text
-                            style={[
-                              styles.mealOptionText,
-                              isSelected && styles.mealOptionTextSelected,
-                            ]}
-                          >
-                            {opt.label}
-                          </Text>
-                          {isSelected && (
-                            <Ionicons
-                              name="checkmark"
-                              size={20}
-                              color={T.primary}
-                            />
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
-
-                    <Btn
-                      variant="primary"
-                      onPress={() => {
-                        handleMealTypeChange(pendingMealType);
-                        setPickerModalVisible(false);
-                      }}
-                      accessibilityLabel="Confirm meal type selection"
-                      style={styles.modalConfirmBtn}
-                    >
-                      Confirm
-                    </Btn>
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              </Modal>
-
               <FieldLabel>Meal description</FieldLabel>
               <TextInput
                 ref={mealInputRef}
@@ -1365,15 +1321,19 @@ export default function HomeScreen() {
               ) : existingPhotoKey ? (
                 <View style={[styles.photoRow, { marginBottom: 0 }]}>
                   <TouchableOpacity
-                    style={styles.photoButton}
+                    style={[styles.photoButton, { flex: 1, marginBottom: 0 }]}
                     onPress={handlePickPhoto}
                   >
-                    <Text style={styles.photoButtonText}>
+                    <Text
+                      style={styles.photoButtonText}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       Photo uploaded — tap to replace
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.removeButton}
+                    style={[styles.removeButton, { flexShrink: 0 }]}
                     onPress={handleRemovePhoto}
                   >
                     <Text style={styles.removeButtonText}>Remove</Text>
@@ -1449,6 +1409,85 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
+
+      {pickerModalVisible && (
+        <Animated.View
+          style={[styles.modalOverlay, { opacity: pickerOverlayAnim }]}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setPickerModalVisible(false)}
+          />
+          <Animated.View
+            style={[
+              styles.modalSheet,
+              {
+                transform: [
+                  {
+                    translateY: pickerOverlayAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [40, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Meal Type</Text>
+              <TouchableOpacity
+                onPress={() => setPickerModalVisible(false)}
+                style={styles.modalCloseButton}
+                accessibilityRole="button"
+                accessibilityLabel="Close meal picker"
+              >
+                <Ionicons name="close" size={22} color={T.onSurfaceVar} />
+              </TouchableOpacity>
+            </View>
+
+            {MEAL_OPTIONS.map((opt) => {
+              const isSelected = pendingMealType === opt.type;
+              return (
+                <TouchableOpacity
+                  key={opt.type}
+                  style={[
+                    styles.mealOptionRow,
+                    isSelected && styles.mealOptionRowSelected,
+                  ]}
+                  onPress={() => setPendingMealType(opt.type)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                >
+                  <Text
+                    style={[
+                      styles.mealOptionText,
+                      isSelected && styles.mealOptionTextSelected,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={20} color={T.primary} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+
+            <Btn
+              variant="primary"
+              onPress={() => {
+                handleMealTypeChange(pendingMealType);
+                setPickerModalVisible(false);
+              }}
+              accessibilityLabel="Confirm meal type selection"
+              style={styles.modalConfirmBtn}
+            >
+              Confirm
+            </Btn>
+          </Animated.View>
+        </Animated.View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -1773,9 +1812,15 @@ const styles = StyleSheet.create({
     color: T.muted,
   },
   modalOverlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'flex-end',
+    zIndex: 50,
+    elevation: 50,
   },
   modalSheet: {
     backgroundColor: T.white,

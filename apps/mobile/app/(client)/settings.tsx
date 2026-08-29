@@ -2,8 +2,10 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
@@ -22,6 +24,7 @@ import {
   Avatar,
   initialsOf,
   cardShadow,
+  inputStyle,
 } from '../../lib/design-system';
 import { Chip } from '../../lib/icons';
 import { computeStreak, fmtDateShort, getTodayISO } from '../../lib/stats';
@@ -40,7 +43,15 @@ export default function SettingsScreen() {
 
   const [coachName, setCoachName] = useState('Not assigned');
   const [clientAge, setClientAge] = useState<number | null>(null);
+  const [clientHeight, setClientHeight] = useState<number | null>(null);
   const [conditionNotes, setConditionNotes] = useState<string | null>(null);
+
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [editAge, setEditAge] = useState('');
+  const [editHeight, setEditHeight] = useState('');
+  const [editConditions, setEditConditions] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const [totalLogsCount, setTotalLogsCount] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -48,8 +59,8 @@ export default function SettingsScreen() {
 
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setFetchError(false);
 
     const supabase = createMobileSupabaseClient();
@@ -58,7 +69,7 @@ export default function SettingsScreen() {
     } = await supabase.auth.getSession();
 
     if (!session?.user?.id) {
-      router.replace('/activate');
+      router.replace('/login');
       return;
     }
 
@@ -79,7 +90,7 @@ export default function SettingsScreen() {
           .single(),
         supabase
           .from('clients')
-          .select('coach_id, age, condition_notes')
+          .select('coach_id, age, height_cm, condition_notes')
           .eq('id', uid)
           .single(),
         supabase
@@ -110,6 +121,7 @@ export default function SettingsScreen() {
 
       if (clientResult.data) {
         setClientAge(clientResult.data.age ?? null);
+        setClientHeight(clientResult.data.height_cm ?? null);
         setConditionNotes(clientResult.data.condition_notes ?? null);
 
         if (clientResult.data.coach_id) {
@@ -143,18 +155,81 @@ export default function SettingsScreen() {
     }
   }, []);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData({ silent: true });
+    setRefreshing(false);
+  }, [loadData]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const startEditingProfile = () => {
+    setEditAge(clientAge !== null ? String(clientAge) : '');
+    setEditHeight(clientHeight !== null ? String(clientHeight) : '');
+    setEditConditions(conditionNotes ?? '');
+    setProfileError(null);
+    setEditingProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    setProfileError(null);
+
+    let parsedAge: number | undefined;
+    if (editAge.trim()) {
+      const n = parseInt(editAge, 10);
+      if (isNaN(n) || n < 1 || n > 120) {
+        setProfileError('Age must be between 1 and 120.');
+        return;
+      }
+      parsedAge = n;
+    }
+
+    let parsedHeight: number | undefined;
+    if (editHeight.trim()) {
+      const h = parseInt(editHeight, 10);
+      if (isNaN(h) || h < 50 || h > 250) {
+        setProfileError('Height must be between 50 and 250 cm.');
+        return;
+      }
+      parsedHeight = h;
+    }
+
+    setSavingProfile(true);
+    try {
+      const supabase = createMobileSupabaseClient();
+      const { error } = await supabase.rpc('update_client_profile', {
+        p_age: parsedAge,
+        p_height_cm: parsedHeight,
+        p_condition_notes: editConditions.trim() || undefined,
+      });
+
+      if (error) {
+        setProfileError('Could not save. Try again.');
+        return;
+      }
+
+      setClientAge(parsedAge ?? null);
+      setClientHeight(parsedHeight ?? null);
+      setConditionNotes(editConditions.trim() || null);
+      setEditingProfile(false);
+    } catch {
+      setProfileError('Network error. Check your connection and try again.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
       const supabase = createMobileSupabaseClient();
       await supabase.auth.signOut();
-      router.replace('/activate');
+      router.replace('/login');
     } catch {
-      router.replace('/activate');
+      router.replace('/login');
     } finally {
       setLoggingOut(false);
     }
@@ -185,6 +260,9 @@ export default function SettingsScreen() {
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.primary} />
+        }
       >
         <Text style={styles.heading}>Settings</Text>
 
@@ -309,10 +387,21 @@ export default function SettingsScreen() {
               )}
             </Card>
 
-            {/* ── Profile Info List (Coach, Age, Conditions) ── */}
-            <SectionLabel style={styles.sectionHeader}>PROFILE DETAILS</SectionLabel>
+            {/* ── Profile Info List (Coach, Age, Height, Conditions) ── */}
+            <View style={styles.sectionHeaderRow}>
+              <SectionLabel style={styles.sectionHeaderNoMargin}>PROFILE DETAILS</SectionLabel>
+              {!editingProfile && (
+                <TouchableOpacity
+                  onPress={startEditingProfile}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit profile details"
+                >
+                  <Text style={styles.editLink}>Edit</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <Card style={styles.infoCard}>
-              {/* Coach Row */}
+              {/* Coach Row (read-only always) */}
               <View style={styles.infoRow}>
                 <Chip
                   iconKey="user"
@@ -330,45 +419,131 @@ export default function SettingsScreen() {
 
               <View style={styles.infoDivider} />
 
-              {/* Age Row */}
-              <View style={styles.infoRow}>
-                <Chip
-                  iconKey="calendar"
-                  size={15}
-                  bg={T.surfaceLow}
-                  color={T.onSurfaceVar}
-                  chipSize={34}
-                  radius={10}
-                />
-                <View style={styles.infoCol}>
-                  <Text style={styles.infoLabel}>Age</Text>
-                  <Text style={styles.infoValue}>
-                    {clientAge !== null ? `${clientAge} years` : 'Not set'}
-                  </Text>
-                </View>
-              </View>
+              {editingProfile ? (
+                <View style={styles.editSection}>
+                  <FieldLabel>Age</FieldLabel>
+                  <TextInput
+                    style={styles.editInput}
+                    value={editAge}
+                    onChangeText={setEditAge}
+                    placeholder="e.g. 32"
+                    placeholderTextColor={T.muted}
+                    keyboardType="number-pad"
+                  />
 
-              <View style={styles.infoDivider} />
+                  <FieldLabel>Height (cm)</FieldLabel>
+                  <TextInput
+                    style={styles.editInput}
+                    value={editHeight}
+                    onChangeText={setEditHeight}
+                    placeholder="e.g. 175"
+                    placeholderTextColor={T.muted}
+                    keyboardType="number-pad"
+                  />
 
-              {/* Conditions Row */}
-              <View style={styles.infoRow}>
-                <Chip
-                  iconKey="cross"
-                  size={15}
-                  bg={T.redBg}
-                  color={T.redMid}
-                  chipSize={34}
-                  radius={10}
-                />
-                <View style={styles.infoCol}>
-                  <Text style={styles.infoLabel}>Conditions</Text>
-                  <Text style={styles.infoValue}>
-                    {conditionNotes && conditionNotes.trim().length > 0
-                      ? conditionNotes
-                      : 'None reported'}
-                  </Text>
+                  <FieldLabel>Medical conditions</FieldLabel>
+                  <TextInput
+                    style={[styles.editInput, styles.editMultiline]}
+                    value={editConditions}
+                    onChangeText={setEditConditions}
+                    placeholder="Leave blank if none"
+                    placeholderTextColor={T.muted}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+
+                  {profileError !== null && (
+                    <Text style={styles.profileError}>{profileError}</Text>
+                  )}
+
+                  <View style={styles.editButtonRow}>
+                    <Btn
+                      variant="secondary"
+                      onPress={() => {
+                        setEditingProfile(false);
+                        setProfileError(null);
+                      }}
+                      disabled={savingProfile}
+                      accessibilityLabel="Cancel editing profile details"
+                      style={styles.editButtonHalf}
+                    >
+                      Cancel
+                    </Btn>
+                    <Btn
+                      variant="primary"
+                      onPress={handleSaveProfile}
+                      disabled={savingProfile}
+                      accessibilityLabel="Save profile details"
+                      style={styles.editButtonHalf}
+                    >
+                      {savingProfile ? <ActivityIndicator color={T.white} /> : 'Save'}
+                    </Btn>
+                  </View>
                 </View>
-              </View>
+              ) : (
+                <>
+                  {/* Age Row */}
+                  <View style={styles.infoRow}>
+                    <Chip
+                      iconKey="calendar"
+                      size={15}
+                      bg={T.surfaceLow}
+                      color={T.onSurfaceVar}
+                      chipSize={34}
+                      radius={10}
+                    />
+                    <View style={styles.infoCol}>
+                      <Text style={styles.infoLabel}>Age</Text>
+                      <Text style={styles.infoValue}>
+                        {clientAge !== null ? `${clientAge} years` : 'Not set'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.infoDivider} />
+
+                  {/* Height Row */}
+                  <View style={styles.infoRow}>
+                    <Chip
+                      iconKey="scale"
+                      size={15}
+                      bg={T.surfaceLow}
+                      color={T.onSurfaceVar}
+                      chipSize={34}
+                      radius={10}
+                    />
+                    <View style={styles.infoCol}>
+                      <Text style={styles.infoLabel}>Height</Text>
+                      <Text style={styles.infoValue}>
+                        {clientHeight !== null ? `${clientHeight} cm` : 'Not set'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.infoDivider} />
+
+                  {/* Conditions Row */}
+                  <View style={styles.infoRow}>
+                    <Chip
+                      iconKey="cross"
+                      size={15}
+                      bg={T.redBg}
+                      color={T.redMid}
+                      chipSize={34}
+                      radius={10}
+                    />
+                    <View style={styles.infoCol}>
+                      <Text style={styles.infoLabel}>Conditions</Text>
+                      <Text style={styles.infoValue}>
+                        {conditionNotes && conditionNotes.trim().length > 0
+                          ? conditionNotes
+                          : 'None reported'}
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              )}
             </Card>
 
             {/* ── Account Section (Change Password & Log Out) ── */}
@@ -449,6 +624,48 @@ const styles = StyleSheet.create({
   sectionHeader: {
     marginTop: 16,
     marginBottom: 8,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  sectionHeaderNoMargin: {
+    marginTop: 0,
+    marginBottom: 0,
+  },
+  editLink: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodySemiBold,
+    fontWeight: '600',
+    color: T.primary,
+  },
+  editSection: {
+    paddingVertical: 12,
+  },
+  editInput: {
+    ...inputStyle,
+    marginBottom: 14,
+  },
+  editMultiline: {
+    minHeight: 70,
+    paddingTop: 10,
+  },
+  profileError: {
+    color: T.red,
+    fontFamily: fontFamily.bodyMedium,
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  editButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  editButtonHalf: {
+    flex: 1,
   },
   card: {
     marginBottom: 10,

@@ -3,6 +3,7 @@ import {
   View,
   Text,
   ScrollView,
+  RefreshControl,
   ActivityIndicator,
   StyleSheet,
   Linking,
@@ -72,8 +73,8 @@ export default function ReportScreen() {
   const [openingPlan, setOpeningPlan] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setFetchError(false);
 
     const supabase = createMobileSupabaseClient();
@@ -81,7 +82,7 @@ export default function ReportScreen() {
       data: { session: sess },
     } = await supabase.auth.getSession();
     if (!sess?.user?.id) {
-      router.replace('/activate');
+      router.replace('/login');
       return;
     }
     const uid = sess.user.id;
@@ -125,6 +126,13 @@ export default function ReportScreen() {
     }
   }, []);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData({ silent: true });
+    setRefreshing(false);
+  }, [loadData]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -166,7 +174,12 @@ export default function ReportScreen() {
   const stepsPoints = logs.map((l) => ({ date: l.log_date, value: l.steps }));
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.primary} />
+      }
+    >
       <Text style={styles.heading}>My Progress</Text>
 
       {fetchError && (

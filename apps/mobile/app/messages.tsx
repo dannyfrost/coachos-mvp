@@ -67,7 +67,7 @@ export default function MessagesScreen() {
     } = await supabase.auth.getSession();
 
     if (!session?.user?.id) {
-      router.replace('/activate');
+      router.replace('/login');
       return;
     }
 

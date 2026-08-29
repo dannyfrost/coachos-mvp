@@ -61,7 +61,9 @@ export default function StepsBarChart({ points }: StepsBarChartProps) {
           <FieldLabel style={styles.fieldLabel}>STEPS TREND</FieldLabel>
           <View style={styles.valueRow}>
             <Text style={styles.currentVal}>{latestSteps.toLocaleString()}</Text>
-            <Text style={styles.avgText}>· avg {avgSteps.toLocaleString()}/day</Text>
+            {validPoints.length > 1 && (
+              <Text style={styles.avgText}>· avg {avgSteps.toLocaleString()}/day</Text>
+            )}
           </View>
         </View>
       </View>
@@ -91,10 +93,16 @@ export default function StepsBarChart({ points }: StepsBarChartProps) {
         </Svg>
       </View>
 
-      <View style={styles.datesRow}>
-        <Text style={styles.dateLabel}>{startDateLabel}</Text>
-        <Text style={styles.dateLabel}>{endDateLabel}</Text>
-      </View>
+      {validPoints.length > 1 ? (
+        <View style={styles.datesRow}>
+          <Text style={styles.dateLabel}>{startDateLabel}</Text>
+          <Text style={styles.dateLabel}>{endDateLabel}</Text>
+        </View>
+      ) : (
+        <Text style={styles.singlePointHint}>
+          {startDateLabel} · Log more days to see your trend
+        </Text>
+      )}
     </View>
   );
 }
@@ -142,6 +150,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: T.muted,
     fontFamily: fontFamily.bodyRegular,
+  },
+  singlePointHint: {
+    fontSize: 10,
+    color: T.muted,
+    fontFamily: fontFamily.bodyRegular,
+    marginTop: 4,
+    textAlign: 'center',
   },
   emptyText: {
     fontSize: 13,

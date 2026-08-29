@@ -5,6 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -92,8 +93,8 @@ export default function MealsScreen() {
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setFetchError(false);
 
     const supabase = createMobileSupabaseClient();
@@ -102,7 +103,7 @@ export default function MealsScreen() {
     } = await supabase.auth.getSession();
 
     if (!sess?.user?.id) {
-      router.replace('/activate');
+      router.replace('/login');
       return;
     }
 
@@ -155,6 +156,13 @@ export default function MealsScreen() {
       setLoading(false);
     }
   }, [todayISO]);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData({ silent: true });
+    setRefreshing(false);
+  }, [loadData]);
 
   useEffect(() => {
     loadData();
@@ -334,6 +342,9 @@ export default function MealsScreen() {
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.primary} />
+        }
       >
         <Text style={styles.heading}>Today's Meals</Text>
 
