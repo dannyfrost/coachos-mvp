@@ -13,6 +13,11 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import { T } from '../lib/design-system';
+// Registers the steps background task's TaskManager.defineTask call
+// unconditionally at app startup — required so Android can find the
+// task by name when it headless-relaunches the JS engine to run it,
+// regardless of which screen was showing when the app was backgrounded.
+import '../lib/stepsBackgroundTask';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({

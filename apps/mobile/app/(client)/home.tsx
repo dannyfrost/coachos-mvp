@@ -53,6 +53,18 @@ import {
 } from '../../lib/stats';
 import { extractWeightCandidate } from '../../lib/weightOcr';
 import {
+  isHealthConnectAvailable,
+  hasStepsPermission,
+  requestStepsPermission,
+  readTodaySteps,
+} from '../../lib/stepsHealthConnect';
+import { decideStepsSync } from '../../lib/stepsSync';
+import {
+  markManualOverrideToday,
+  isManualOverrideActiveToday,
+} from '../../lib/stepsManualOverride';
+import { registerStepsBackgroundTask } from '../../lib/stepsBackgroundTask';
+import {
   initialWeightOcrState,
   reduceWeightOcrState,
 } from '../../lib/weightOcrState';
@@ -448,6 +460,53 @@ export default function HomeScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const stepsSyncRanRef = useRef(false);
+  useEffect(() => {
+    if (!userId || stepsSyncRanRef.current) return;
+    stepsSyncRanRef.current = true;
+
+    (async () => {
+      try {
+        const available = await isHealthConnectAvailable();
+        if (!available) return;
+
+        let granted = await hasStepsPermission();
+        if (!granted) {
+          granted = await requestStepsPermission();
+        }
+        if (!granted) return;
+
+        const today = getTodayISO();
+        const result = await readTodaySteps();
+        const overrideActive = await isManualOverrideActiveToday(today);
+        const decision = decideStepsSync(today, overrideActive, result);
+
+        if (__DEV__) {
+          console.log('[stepsForegroundSync]', { today, result, overrideActive, decision });
+        }
+
+        if (decision.action === 'update') {
+          setSteps(String(decision.value));
+          setSubmitSuccess(false);
+          const supabase = createMobileSupabaseClient();
+          const { error } = await supabase.rpc('update_today_log', {
+            p_steps: decision.value,
+          });
+          if (__DEV__ && error) {
+            console.log('[stepsForegroundSync] update_today_log failed', error);
+          }
+        }
+
+        await registerStepsBackgroundTask();
+      } catch (err) {
+        if (__DEV__) {
+          console.log('[stepsForegroundSync] unexpected error', err);
+        }
+        // Never let steps auto-sync crash or block the Daily Log.
+      }
+    })();
+  }, [userId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1312,6 +1371,7 @@ export default function HomeScreen() {
                 onChangeText={(v) => {
                   setSteps(v);
                   setSubmitSuccess(false);
+                  markManualOverrideToday(getTodayISO());
                 }}
                 placeholder="e.g. 8000"
                 placeholderTextColor={T.muted}
