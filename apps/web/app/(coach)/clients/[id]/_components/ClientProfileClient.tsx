@@ -319,7 +319,12 @@ export default function ClientProfileClient({
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {logs.map(log => {
-                const photoUrl = log.meal_photo_key ? photoUrlMap[log.meal_photo_key] : undefined
+                const dayMeals = groupedMealsByDate[log.log_date] ?? []
+                const dayMealWithPhoto = dayMeals.find(m => m.photo_key)
+                const photoUrl = dayMealWithPhoto?.photo_key ? photoUrlMap[dayMealWithPhoto.photo_key] : undefined
+                const mealSummary = dayMeals.length > 0
+                  ? dayMeals.filter(m => m.description).map(m => m.description).join(' · ') || null
+                  : null
                 return (
                   <Card key={log.id} style={{ padding: '14px 18px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
@@ -340,7 +345,7 @@ export default function ClientProfileClient({
                         )}
                       </div>
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, color: T.onSurfaceVar, lineHeight: 1.6 }}>{truncate(log.meal_description, 200)}</p>
+                    <p style={{ margin: 0, fontSize: 13, color: T.onSurfaceVar, lineHeight: 1.6 }}>{truncate(mealSummary, 200)}</p>
                     {log.questions && (
                       <p style={{ margin: '6px 0 0', fontSize: 12, color: T.muted, fontStyle: 'italic' }}>{truncate(log.questions, 160)}</p>
                     )}
