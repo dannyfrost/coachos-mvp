@@ -55,16 +55,28 @@ export async function POST(req: NextRequest) {
     const full_name = rawFullName.trim()
 
     const rawRoleName = b.role_name
-    if (typeof rawRoleName !== 'string' || !['assistant', 'senior_assistant', 'billing_operations'].includes(rawRoleName)) {
-      return NextResponse.json({ error: 'role_name must be assistant, senior_assistant, or billing_operations' }, { status: 400 })
+    if (typeof rawRoleName !== 'string' || rawRoleName.trim().length === 0) {
+      return NextResponse.json({ error: 'role_name is required' }, { status: 400 })
     }
 
     const assigned_timezones = Array.isArray(b.assigned_timezones) ? (b.assigned_timezones as string[]) : null
     const assigned_regions = Array.isArray(b.assigned_regions) ? (b.assigned_regions as string[]) : null
 
-    const { data: role, error: roleError } = await db.from('roles').select('id').eq('name', rawRoleName).single()
+    // Accept the 3 built-in assistant-type system roles, or any of this
+    // coach's own custom (unlocked) roles. Never coach/super_admin/client
+    // — those exist in the same table but must never be assigned as staff.
+    const SYSTEM_ASSISTANT_ROLES = ['assistant', 'senior_assistant', 'billing_operations']
+    const { data: role, error: roleError } = await db
+      .from('roles')
+      .select('id, locked, coach_id')
+      .eq('name', rawRoleName)
+      .single()
     if (roleError || !role) {
-      return NextResponse.json({ error: 'Role not found' }, { status: 500 })
+      return NextResponse.json({ error: 'Role not found' }, { status: 404 })
+    }
+    const isOwnCustomRole = !role.locked && role.coach_id === user.id
+    if (!SYSTEM_ASSISTANT_ROLES.includes(rawRoleName) && !isOwnCustomRole) {
+      return NextResponse.json({ error: 'Role not found' }, { status: 404 })
     }
 
     const serviceClient = createServiceRoleClient()

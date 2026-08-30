@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createSupabaseServerClient } from '@coaching/supabase/ssr-server'
-import TeamClient, { StaffRow, ActiveClientOption } from './_components/TeamClient'
+import TeamClient, { StaffRow, ActiveClientOption, RoleRow } from './_components/TeamClient'
 
 export default async function TeamPage() {
   const cookieStore = cookies()
@@ -20,7 +20,7 @@ export default async function TeamPage() {
   const { data: platformUser } = await supabase.from('platform_users').select('role_type').eq('id', user.id).single()
   if (platformUser?.role_type !== 'coach') redirect('/dashboard')
 
-  const [{ data: rawStaff, error: staffError }, { data: rawAssignments }, { data: rawClients }] = await Promise.all([
+  const [{ data: rawStaff, error: staffError }, { data: rawAssignments }, { data: rawClients }, { data: rawRoles }] = await Promise.all([
     supabase
       .from('staff_assignments')
       .select('id, user_id, status, assigned_timezones, assigned_regions, created_at, platform_users(full_name, email), roles(name)')
@@ -29,6 +29,11 @@ export default async function TeamPage() {
       .from('client_staff_assignments')
       .select('staff_id, client_id, clients!client_staff_assignments_client_coach_fkey(platform_users(full_name))'),
     supabase.from('clients').select('id, platform_users(full_name, status)'),
+    supabase
+      .from('roles')
+      .select('id, name, description, locked, coach_id, role_permissions(permission, granted)')
+      .order('locked', { ascending: false })
+      .order('name'),
   ])
 
   if (staffError) {
@@ -65,5 +70,25 @@ export default async function TeamPage() {
     .filter(c => (c.platform_users as { status: string } | null)?.status === 'active')
     .map(c => ({ id: c.id, full_name: (c.platform_users as { full_name: string } | null)?.full_name ?? 'Unknown' }))
 
-  return <TeamClient staff={staff} activeClients={activeClients} />
+  // Only assistant-type roles are relevant here — coach/super_admin/client
+  // exist in the same table but are never invitable as staff.
+  const NON_STAFF_ROLE_NAMES = new Set(['coach', 'super_admin', 'client'])
+  const roles: RoleRow[] = (rawRoles ?? [])
+    .filter(r => !NON_STAFF_ROLE_NAMES.has(r.name))
+    .map(r => {
+      const perms = (r.role_permissions ?? []) as { permission: string; granted: boolean }[]
+      const has = (p: string) => perms.some(x => x.permission === p && x.granted)
+      return {
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        locked: r.locked,
+        readTeamScope: has('clients:read_team_scope'),
+        billingManage: has('billing:manage'),
+        modifyPlans: has('modify_plans'),
+        markPayment: has('mark_payment'),
+      }
+    })
+
+  return <TeamClient staff={staff} activeClients={activeClients} roles={roles} />
 }

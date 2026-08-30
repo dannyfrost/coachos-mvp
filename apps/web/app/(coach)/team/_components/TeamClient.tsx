@@ -18,16 +18,41 @@ export type StaffRow = {
 
 export type ActiveClientOption = { id: string; full_name: string }
 
+export type RoleRow = {
+  id: string
+  name: string
+  description: string | null
+  locked: boolean
+  readTeamScope: boolean
+  billingManage: boolean
+  modifyPlans: boolean
+  markPayment: boolean
+}
+
 const ROLE_LABEL: Record<string, string> = {
   assistant: 'Assistant',
   senior_assistant: 'Senior Assistant',
   billing_operations: 'Billing Operations',
 }
 
-function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: () => void }) {
+function roleLabel(roleName: string, roles: RoleRow[]): string {
+  if (ROLE_LABEL[roleName]) return ROLE_LABEL[roleName]
+  const custom = roles.find(r => r.name === roleName)
+  return custom?.name ?? roleName
+}
+
+function InviteModal({
+  onClose,
+  onInvited,
+  roles,
+}: {
+  onClose: () => void
+  onInvited: () => void
+  roles: RoleRow[]
+}) {
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
-  const [roleName, setRoleName] = useState('assistant')
+  const [roleName, setRoleName] = useState(roles[0]?.name ?? 'assistant')
   const [timezones, setTimezones] = useState('')
   const [regions, setRegions] = useState('')
   const [loading, setLoading] = useState(false)
@@ -103,9 +128,12 @@ function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: (
             <div style={{ marginBottom: 12 }}>
               <FieldLabel>Role</FieldLabel>
               <select value={roleName} onChange={e => setRoleName(e.target.value)} style={inputStyle}>
-                <option value="assistant">Assistant (assigned clients only)</option>
-                <option value="senior_assistant">Senior Assistant (full team scope)</option>
-                <option value="billing_operations">Billing Operations (no client data)</option>
+                {roles.map(r => (
+                  <option key={r.id} value={r.name}>
+                    {roleLabel(r.name, roles)}
+                    {r.description ? ` — ${r.description}` : ''}
+                  </option>
+                ))}
               </select>
             </div>
             <div style={{ marginBottom: 12 }}>
@@ -221,7 +249,183 @@ function ManageClientsModal({
   )
 }
 
-export default function TeamClient({ staff, activeClients }: { staff: StaffRow[]; activeClients: ActiveClientOption[] }) {
+const PERMISSION_FIELDS = [
+  { key: 'readTeamScope' as const, label: 'See all team clients (not just assigned)' },
+  { key: 'billingManage' as const, label: 'Manage billing' },
+  { key: 'modifyPlans' as const, label: 'Assign / replace plans' },
+  { key: 'markPayment' as const, label: 'Confirm client payments' },
+]
+
+function RoleFormModal({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial: RoleRow | null
+  onClose: () => void
+  onSaved: (role: RoleRow) => void
+}) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [description, setDescription] = useState(initial?.description ?? '')
+  const [readTeamScope, setReadTeamScope] = useState(initial?.readTeamScope ?? false)
+  const [billingManage, setBillingManage] = useState(initial?.billingManage ?? false)
+  const [modifyPlans, setModifyPlans] = useState(initial?.modifyPlans ?? false)
+  const [markPayment, setMarkPayment] = useState(initial?.markPayment ?? false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    const supabase = createSupabaseBrowserClient()
+
+    if (initial) {
+      const { error: rpcError } = await supabase.rpc('update_custom_role_permissions', {
+        p_role_id: initial.id,
+        p_description: description || undefined,
+        p_read_team_scope: readTeamScope,
+        p_billing_manage: billingManage,
+        p_modify_plans: modifyPlans,
+        p_mark_payment: markPayment,
+      })
+      setSaving(false)
+      if (rpcError) {
+        setError(rpcError.message)
+        return
+      }
+      onSaved({ ...initial, description: description || null, readTeamScope, billingManage, modifyPlans, markPayment })
+    } else {
+      const { data, error: rpcError } = await supabase.rpc('create_custom_role', {
+        p_name: name,
+        p_description: description || undefined,
+        p_read_team_scope: readTeamScope,
+        p_billing_manage: billingManage,
+        p_modify_plans: modifyPlans,
+        p_mark_payment: markPayment,
+      })
+      setSaving(false)
+      if (rpcError || !data) {
+        setError(rpcError?.message ?? 'Could not create role.')
+        return
+      }
+      onSaved({
+        id: data as unknown as string,
+        name: name.trim(),
+        description: description || null,
+        locked: false,
+        readTeamScope,
+        billingManage,
+        modifyPlans,
+        markPayment,
+      })
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
+      <div style={{ background: T.white, borderRadius: 14, boxShadow: shadow.float, width: '100%', maxWidth: 440, padding: 24 }}>
+        <h2 style={{ margin: '0 0 16px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>
+          {initial ? 'Edit Role' : 'New Role'}
+        </h2>
+        <form onSubmit={handleSubmit}>
+          {!initial && (
+            <div style={{ marginBottom: 12 }}>
+              <FieldLabel>Name</FieldLabel>
+              <input type="text" required minLength={1} maxLength={100} value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+            </div>
+          )}
+          <div style={{ marginBottom: 16 }}>
+            <FieldLabel>Description (optional)</FieldLabel>
+            <input type="text" maxLength={200} value={description} onChange={e => setDescription(e.target.value)} style={inputStyle} />
+          </div>
+          <FieldLabel>Permissions</FieldLabel>
+          <div style={{ marginBottom: 16 }}>
+            {PERMISSION_FIELDS.map(f => {
+              const checked = { readTeamScope, billingManage, modifyPlans, markPayment }[f.key]
+              const setters = { readTeamScope: setReadTeamScope, billingManage: setBillingManage, modifyPlans: setModifyPlans, markPayment: setMarkPayment }
+              return (
+                <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', fontSize: 13, color: T.onSurfaceVar, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={checked} onChange={e => setters[f.key](e.target.checked)} />
+                  {f.label}
+                </label>
+              )
+            })}
+          </div>
+          {error && <p style={{ color: T.red, fontSize: 13, marginBottom: 12 }}>{error}</p>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn type="submit" disabled={saving} style={{ flex: 1 }}>
+              {saving ? 'Saving…' : 'Save'}
+            </Btn>
+            <Btn variant="secondary" onClick={onClose} style={{ flex: 1 }}>
+              Cancel
+            </Btn>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function RolesModal({
+  roles,
+  onClose,
+  onRolesChanged,
+}: {
+  roles: RoleRow[]
+  onClose: () => void
+  onRolesChanged: (roles: RoleRow[]) => void
+}) {
+  const [formRole, setFormRole] = useState<RoleRow | null | undefined>(undefined)
+
+  function handleSaved(role: RoleRow) {
+    const exists = roles.some(r => r.id === role.id)
+    onRolesChanged(exists ? roles.map(r => (r.id === role.id ? role : r)) : [...roles, role])
+    setFormRole(undefined)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
+      <div style={{ background: T.white, borderRadius: 14, boxShadow: shadow.float, width: '100%', maxWidth: 520, padding: 24, maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2 style={{ margin: 0, fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Roles</h2>
+          <Btn small onClick={() => setFormRole(null)}>
+            + New Role
+          </Btn>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          {roles.map(r => (
+            <div key={r.id} style={{ padding: 12, borderRadius: 8, background: T.surfaceLow, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13, color: T.onSurface }}>{roleLabel(r.name, roles)}</span>
+                  {r.locked && <Badge status="active" small labelOverride="System" />}
+                </div>
+                {r.description && <p style={{ margin: '2px 0 0', fontSize: 12, color: T.muted }}>{r.description}</p>}
+              </div>
+              {!r.locked && (
+                <Btn small variant="secondary" onClick={() => setFormRole(r)}>
+                  Edit
+                </Btn>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <Btn full variant="secondary" onClick={onClose}>
+          Close
+        </Btn>
+      </div>
+
+      {formRole !== undefined && <RoleFormModal initial={formRole} onClose={() => setFormRole(undefined)} onSaved={handleSaved} />}
+    </div>
+  )
+}
+
+export default function TeamClient({ staff, activeClients, roles: initialRoles }: { staff: StaffRow[]; activeClients: ActiveClientOption[]; roles: RoleRow[] }) {
+  const [roles, setRoles] = useState(initialRoles)
+  const [showRoles, setShowRoles] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [manageStaff, setManageStaff] = useState<StaffRow | null>(null)
   const [statusLoading, setStatusLoading] = useState<string | null>(null)
@@ -250,8 +454,11 @@ export default function TeamClient({ staff, activeClients }: { staff: StaffRow[]
 
   return (
     <div className="page-pad">
-      <div style={{ display: 'flex', marginBottom: 20 }}>
-        <Btn onClick={() => setShowInvite(true)} style={{ marginLeft: 'auto' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <Btn variant="secondary" onClick={() => setShowRoles(true)} style={{ marginLeft: 'auto' }}>
+          Manage Roles
+        </Btn>
+        <Btn onClick={() => setShowInvite(true)}>
           + Invite Staff
         </Btn>
       </div>
@@ -299,7 +506,7 @@ export default function TeamClient({ staff, activeClients }: { staff: StaffRow[]
                 <div style={{ fontWeight: 600, fontSize: 14, color: T.onSurface }}>{s.fullName}</div>
                 <div style={{ fontSize: 11, color: T.muted }}>{s.email}</div>
               </div>
-              <span style={{ fontSize: 13, color: T.onSurfaceVar }}>{ROLE_LABEL[s.roleName] ?? s.roleName}</span>
+              <span style={{ fontSize: 13, color: T.onSurfaceVar }}>{roleLabel(s.roleName, roles)}</span>
               <Badge status={s.status === 'active' ? 'active' : 'deactivated'} small />
               <span style={{ fontSize: 13, color: T.onSurface }}>{s.assignedClients.length}</span>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -316,10 +523,11 @@ export default function TeamClient({ staff, activeClients }: { staff: StaffRow[]
         </Card>
       )}
 
-      {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={refresh} />}
+      {showInvite && <InviteModal onClose={() => setShowInvite(false)} onInvited={refresh} roles={roles} />}
       {manageStaff && (
         <ManageClientsModal staffMember={manageStaff} activeClients={activeClients} onClose={() => setManageStaff(null)} onChanged={refresh} />
       )}
+      {showRoles && <RolesModal roles={roles} onClose={() => setShowRoles(false)} onRolesChanged={setRoles} />}
     </div>
   )
 }

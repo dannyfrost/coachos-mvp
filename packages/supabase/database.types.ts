@@ -841,6 +841,7 @@ export type Database = {
       }
       roles: {
         Row: {
+          coach_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -850,6 +851,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          coach_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -859,6 +861,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          coach_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -867,7 +870,15 @@ export type Database = {
           name?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "roles_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "coaches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       staff_assignments: {
         Row: {
@@ -961,6 +972,17 @@ export type Database = {
       }
       create_client_invite: {
         Args: { p_email: string; p_full_name: string; p_user_id: string }
+        Returns: string
+      }
+      create_custom_role: {
+        Args: {
+          p_billing_manage?: boolean
+          p_description?: string
+          p_mark_payment?: boolean
+          p_modify_plans?: boolean
+          p_name: string
+          p_read_team_scope?: boolean
+        }
         Returns: string
       }
       deactivate_client: { Args: { p_client_id: string }; Returns: undefined }
@@ -1118,6 +1140,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      update_custom_role_permissions: {
+        Args: {
+          p_billing_manage?: boolean
+          p_description?: string
+          p_mark_payment?: boolean
+          p_modify_plans?: boolean
+          p_read_team_scope?: boolean
+          p_role_id: string
+        }
+        Returns: undefined
       }
       update_flash_card_notes: {
         Args: { p_card_id: string; p_notes: string }
