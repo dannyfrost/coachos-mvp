@@ -159,7 +159,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
 }
 
 type SortKey = 'name' | 'last_log' | 'subscription'
-const STATUS_FILTERS: (UserStatus | 'all')[] = ['all', 'active', 'pending', 'paused']
+const STATUS_FILTERS: (UserStatus | 'all')[] = ['all', 'active', 'pending', 'paused', 'deactivated']
 const FLASH_FILTERS: (FlashStatus | 'all')[] = ['all', 'green', 'yellow', 'red']
 
 export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
@@ -168,12 +168,41 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
   const [flashFilter, setFlashFilter] = useState<FlashStatus | 'all'>('all')
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [showModal, setShowModal] = useState(false)
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, UserStatus>>({})
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  function statusOf(c: ClientRow): UserStatus | undefined {
+    return statusOverrides[c.id] ?? c.platform_users?.status
+  }
+
+  async function handleDeactivate(clientId: string) {
+    setActionLoadingId(clientId)
+    setActionError(null)
+    const supabase = createSupabaseBrowserClient()
+    const { error } = await supabase.rpc('deactivate_client', { p_client_id: clientId })
+    setActionLoadingId(null)
+    setConfirmingId(null)
+    if (error) setActionError('Could not deactivate client. Try again.')
+    else setStatusOverrides(o => ({ ...o, [clientId]: 'deactivated' }))
+  }
+
+  async function handleReactivate(clientId: string) {
+    setActionLoadingId(clientId)
+    setActionError(null)
+    const supabase = createSupabaseBrowserClient()
+    const { error } = await supabase.rpc('reactivate_client', { p_client_id: clientId })
+    setActionLoadingId(null)
+    if (error) setActionError('Could not reactivate client. Try again.')
+    else setStatusOverrides(o => ({ ...o, [clientId]: 'active' }))
+  }
 
   const filtered = clients
     .filter(c => {
       const pu = c.platform_users
       if (!pu) return false
-      if (statusFilter !== 'all' && pu.status !== statusFilter) return false
+      if (statusFilter !== 'all' && statusOf(c) !== statusFilter) return false
       if (flashFilter !== 'all' && c.flash?.status !== flashFilter) return false
       const q = search.toLowerCase()
       if (q && !pu.full_name.toLowerCase().includes(q) && !pu.email.toLowerCase().includes(q)) return false
@@ -255,8 +284,8 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '2fr 1fr 80px 1fr 1fr 120px',
-            minWidth: 720,
+            gridTemplateColumns: '2fr 1fr 80px 1fr 1fr 170px',
+            minWidth: 780,
             padding: '10px 20px',
             background: T.surfaceLow,
             borderBottom: `1px solid ${T.border}`,
@@ -274,13 +303,15 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
         ) : (
           filtered.map((c, i) => {
             const pu = c.platform_users!
+            const status = statusOf(c)
+            const isLoading = actionLoadingId === c.id
             return (
               <div
                 key={c.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 80px 1fr 1fr 120px',
-                  minWidth: 720,
+                  gridTemplateColumns: '2fr 1fr 80px 1fr 1fr 170px',
+                  minWidth: 780,
                   padding: '13px 20px',
                   borderBottom: i < filtered.length - 1 ? `1px solid ${T.border}` : 'none',
                   alignItems: 'center',
@@ -290,7 +321,7 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
                   <div style={{ fontWeight: 600, fontSize: 14, color: T.onSurface }}>{pu.full_name}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{pu.email}</div>
                 </div>
-                <Badge status={pu.status} small />
+                <Badge status={status ?? pu.status} small />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {c.flash ? <FlashDot status={c.flash.status} /> : <FlashDot status="—" />}
                   <span style={{ fontSize: 11, color: T.muted }}>{c.flash?.status ?? '—'}</span>
@@ -306,17 +337,39 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
                     <span style={{ fontSize: 13, color: T.muted }}>—</span>
                   )}
                 </div>
-                <a href={`/clients/${c.id}`} style={{ textDecoration: 'none' }}>
-                  <Btn small variant="primary">
-                    Profile
-                  </Btn>
-                </a>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                  <a href={`/clients/${c.id}`} style={{ textDecoration: 'none' }}>
+                    <Btn small variant="primary">
+                      Profile
+                    </Btn>
+                  </a>
+                  {status === 'deactivated' ? (
+                    <Btn small variant="success" onClick={() => handleReactivate(c.id)} disabled={isLoading}>
+                      {isLoading ? '…' : 'Reactivate'}
+                    </Btn>
+                  ) : confirmingId === c.id ? (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <Btn small variant="danger" onClick={() => handleDeactivate(c.id)} disabled={isLoading}>
+                        {isLoading ? '…' : 'Confirm'}
+                      </Btn>
+                      <Btn small variant="secondary" onClick={() => setConfirmingId(null)} disabled={isLoading}>
+                        Cancel
+                      </Btn>
+                    </div>
+                  ) : (
+                    <Btn small variant="secondary" onClick={() => setConfirmingId(c.id)}>
+                      Deactivate
+                    </Btn>
+                  )}
+                </div>
               </div>
             )
           })
         )}
        </div>
       </Card>
+
+      {actionError && <p style={{ fontSize: 13, color: T.red, marginTop: 12 }}>{actionError}</p>}
 
       {showModal && <InviteModal onClose={() => setShowModal(false)} />}
     </div>
