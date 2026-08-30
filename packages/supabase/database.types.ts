@@ -1017,6 +1017,7 @@ export type Database = {
       }
       mark_message_read: { Args: { p_message_id: string }; Returns: undefined }
       pause_client: { Args: { p_client_id: string }; Returns: undefined }
+      reactivate_client: { Args: { p_client_id: string }; Returns: undefined }
       reassign_staff_clients: {
         Args: { p_from_staff_id: string; p_to_staff_id?: string }
         Returns: undefined

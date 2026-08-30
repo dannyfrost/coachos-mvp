@@ -133,6 +133,7 @@ export default function ClientProfileClient({
   const [displayStatus, setDisplayStatus] = useState<UserStatus>(platformUser.status as UserStatus)
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false)
 
   const [notesValue, setNotesValue] = useState(flashCard?.notes ?? '')
   const [notesSaving, setNotesSaving] = useState(false)
@@ -160,6 +161,27 @@ export default function ClientProfileClient({
     const { error } = await supabase.rpc('unpause_client', { p_client_id: clientId })
     setActionLoading(false)
     if (error) setActionError('Could not unpause client. Try again.')
+    else setDisplayStatus('active')
+  }
+
+  async function handleDeactivate() {
+    setActionLoading(true)
+    setActionError(null)
+    const supabase = createSupabaseBrowserClient()
+    const { error } = await supabase.rpc('deactivate_client', { p_client_id: clientId })
+    setActionLoading(false)
+    setConfirmingDeactivate(false)
+    if (error) setActionError('Could not deactivate client. Try again.')
+    else setDisplayStatus('deactivated')
+  }
+
+  async function handleReactivate() {
+    setActionLoading(true)
+    setActionError(null)
+    const supabase = createSupabaseBrowserClient()
+    const { error } = await supabase.rpc('reactivate_client', { p_client_id: clientId })
+    setActionLoading(false)
+    if (error) setActionError('Could not reactivate client. Try again.')
     else setDisplayStatus('active')
   }
 
@@ -228,8 +250,33 @@ export default function ClientProfileClient({
                   {actionLoading ? '...' : 'Unpause'}
                 </Btn>
               )}
+              {(displayStatus === 'active' || displayStatus === 'paused') && !confirmingDeactivate && (
+                <Btn small variant="secondary" onClick={() => setConfirmingDeactivate(true)} disabled={actionLoading}>
+                  Deactivate
+                </Btn>
+              )}
+              {displayStatus === 'deactivated' && (
+                <Btn small variant="success" onClick={handleReactivate} disabled={actionLoading}>
+                  {actionLoading ? '...' : 'Reactivate'}
+                </Btn>
+              )}
             </div>
           </div>
+          {confirmingDeactivate && (
+            <div style={{ marginTop: 12, padding: 12, background: T.redBg, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: T.red, fontWeight: 600 }}>
+                This marks the client as deactivated. Their data is preserved and they can be reactivated anytime. Confirm?
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Btn small variant="danger" onClick={handleDeactivate} disabled={actionLoading}>
+                  {actionLoading ? '...' : 'Confirm Deactivate'}
+                </Btn>
+                <Btn small variant="secondary" onClick={() => setConfirmingDeactivate(false)} disabled={actionLoading}>
+                  Cancel
+                </Btn>
+              </div>
+            </div>
+          )}
           {actionError && <p style={{ color: T.red, fontSize: 12, marginTop: 10 }}>{actionError}</p>}
           {subscription && (
             <div style={{ marginTop: 14, padding: 12, background: T.surfaceLow, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
