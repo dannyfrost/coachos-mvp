@@ -11,8 +11,15 @@ import {
   StyleSheet,
 } from 'react-native';
 import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
-import { T, fontFamily, Btn } from '../lib/design-system';
+import {
+  T,
+  fontFamily,
+  Btn,
+  screenBackground,
+  screenWashColors,
+} from '../lib/design-system';
 import { IconDoubleCheck } from '../lib/icons';
 
 export type MessageRow = {
@@ -211,10 +218,17 @@ export default function MessagesScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: T.surface }}
-    >
+    <View style={screenBackground}>
+      <LinearGradient
+        colors={screenWashColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+      >
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -376,7 +390,8 @@ export default function MessagesScreen() {
           </Btn>
         </View>
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 

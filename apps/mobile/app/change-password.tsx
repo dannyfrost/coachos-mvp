@@ -11,6 +11,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
   T,
@@ -19,6 +20,8 @@ import {
   Btn,
   FieldLabel,
   inputStyle,
+  screenBackground,
+  screenWashColors,
 } from '../lib/design-system';
 
 export default function ChangePasswordScreen() {
@@ -78,10 +81,17 @@ export default function ChangePasswordScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: T.surface }}
-    >
+    <View style={screenBackground}>
+      <LinearGradient
+        colors={screenWashColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+      >
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -156,7 +166,8 @@ export default function ChangePasswordScreen() {
           </Btn>
         </Card>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -185,7 +196,7 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 20,
-    backgroundColor: T.surface,
+    backgroundColor: 'transparent',
   },
   card: {
     marginBottom: 10,

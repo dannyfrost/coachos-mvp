@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
+  View,
   Text,
   TextInput,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
   T,
@@ -17,6 +19,8 @@ import {
   Btn,
   FieldLabel,
   inputStyle,
+  screenBackground,
+  screenWashColors,
 } from '../lib/design-system';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
@@ -126,10 +130,17 @@ export default function ActivateScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={screenBackground}>
+      <LinearGradient
+        colors={screenWashColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
@@ -236,20 +247,21 @@ export default function ActivateScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: T.surface,
+    backgroundColor: 'transparent',
   },
   container: {
     flexGrow: 1,
     padding: 24,
     paddingTop: 64,
-    backgroundColor: T.surface,
+    backgroundColor: 'transparent',
   },
   title: {
     fontSize: 24,

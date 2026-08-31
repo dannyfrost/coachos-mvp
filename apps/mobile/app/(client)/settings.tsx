@@ -18,13 +18,14 @@ import {
   fontFamily,
   Card,
   Btn,
-  Badge,
+  StatusWord,
   SectionLabel,
   FieldLabel,
   Avatar,
   initialsOf,
-  cardShadow,
   inputStyle,
+  screenBackground,
+  screenWashColors,
 } from '../../lib/design-system';
 import { Chip } from '../../lib/icons';
 import { computeStreak, fmtDateShort, getTodayISO } from '../../lib/stats';
@@ -256,7 +257,13 @@ export default function SettingsScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: T.surface }}>
+    <View style={screenBackground}>
+      <LinearGradient
+        colors={screenWashColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
@@ -304,7 +311,7 @@ export default function SettingsScreen() {
             {/* ── Stats Row (Streak & Total Logs) ── */}
             <SectionLabel style={styles.sectionHeader}>ACTIVITY STATS</SectionLabel>
             <View style={styles.statsGrid}>
-              <View style={styles.statCard}>
+              <Card style={styles.statCard}>
                 <View style={styles.statCardHeader}>
                   <Text style={styles.statLabel}>STREAK</Text>
                   <Chip
@@ -322,9 +329,9 @@ export default function SettingsScreen() {
                     {streak === 1 ? 'day' : 'days'}
                   </Text>
                 </View>
-              </View>
+              </Card>
 
-              <View style={styles.statCard}>
+              <Card style={styles.statCard}>
                 <View style={styles.statCardHeader}>
                   <Text style={styles.statLabel}>TOTAL LOGS</Text>
                   <Chip
@@ -342,7 +349,7 @@ export default function SettingsScreen() {
                     {totalLogsCount === 1 ? 'log' : 'logs'}
                   </Text>
                 </View>
-              </View>
+              </Card>
             </View>
 
             {/* ── Subscription Card ── */}
@@ -352,7 +359,7 @@ export default function SettingsScreen() {
                 <>
                   <View style={styles.subHeaderRow}>
                     <FieldLabel style={styles.subFieldLabel}>PLAN STATUS</FieldLabel>
-                    <Badge status={subscription.status} small />
+                    <StatusWord status={subscription.status} />
                   </View>
 
                   <View style={styles.subDetailsRow}>
@@ -598,7 +605,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
     paddingTop: 52,
-    backgroundColor: T.surface,
+    backgroundColor: 'transparent',
   },
   heading: {
     fontSize: 22,
@@ -698,10 +705,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: T.white,
-    borderRadius: 16,
     padding: 14,
-    ...cardShadow,
   },
   statCardHeader: {
     flexDirection: 'row',
