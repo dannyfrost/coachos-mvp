@@ -1200,7 +1200,7 @@ export default function HomeScreen() {
             )}
 
             {/* ── Today's Tasks Checklist + Completion Ring ── */}
-            <View style={styles.tasksCard}>
+            <Card style={styles.tasksCard}>
               <TouchableOpacity
                 onPress={toggleCollapsed}
                 activeOpacity={0.7}
@@ -1295,12 +1295,12 @@ export default function HomeScreen() {
                   ))}
                 </View>
               )}
-            </View>
+            </Card>
 
             {/* ── Stats Row (Weight & Steps) ── */}
             <View style={styles.statsGrid}>
               {/* Weight Stat Card */}
-              <View style={styles.statCard}>
+              <Card style={styles.statCard}>
                 <View style={styles.statCardHeader}>
                   <Text style={styles.statLabel}>WEIGHT</Text>
                   <Chip
@@ -1335,10 +1335,10 @@ export default function HomeScreen() {
                 >
                   {weightDeltaText}
                 </Text>
-              </View>
+              </Card>
 
               {/* Steps Stat Card */}
-              <View style={styles.statCard}>
+              <Card style={styles.statCard}>
                 <View style={styles.statCardHeader}>
                   <Text style={styles.statLabel}>STEPS</Text>
                   <Chip
@@ -1373,16 +1373,21 @@ export default function HomeScreen() {
                 >
                   {stepsDeltaText}
                 </Text>
-              </View>
+              </Card>
             </View>
 
-            {/* ── Daily Log Entry Form Cards ── */}
-            <SectionLabel style={styles.formSectionLabel}>
-              DAILY LOG
-            </SectionLabel>
+            {/* ── One panel titled "Today": Steps+Weight, Weight OCR,
+                Meal budget/slices, Questions — one Card, light dividers
+                between subsections instead of separate card boundaries. ── */}
+            <Card style={styles.todayPanel}>
+              <Text style={styles.todayPanelTitle}>Today</Text>
 
-            {/* Body Metrics Card */}
-            <Card style={styles.formCard}>
+              {/* Subsection 1+2: Steps + Weight, with the Weight-OCR
+                  "From photo" control and its feedback (from-photo tag,
+                  retake banner, manual-fallback hint) inline on the
+                  weight field they belong to — COACHOS.md items 1 and 2
+                  describe these as one flowing block, not two card zones. */}
+              <View style={styles.panelSubsection}>
               <View style={styles.formCardHeader}>
                 <Chip
                   iconKey="scale"
@@ -1392,7 +1397,7 @@ export default function HomeScreen() {
                   chipSize={26}
                   radius={7}
                 />
-                <Text style={styles.formCardTitle}>BODY METRICS</Text>
+                <Text style={styles.formCardTitle}>STEPS &amp; WEIGHT</Text>
               </View>
 
               <FieldLabel>Steps</FieldLabel>
@@ -1478,10 +1483,12 @@ export default function HomeScreen() {
                   Photo saved — enter your weight below.
                 </Text>
               )}
-            </Card>
+              </View>
 
-            {/* Nutrition Card */}
-            <Card style={styles.formCard}>
+              <View style={styles.panelDivider} />
+
+              {/* Subsection 3: Meal */}
+              <View style={styles.panelSubsection}>
               <View style={styles.formCardHeader}>
                 <Chip
                   iconKey="utensils"
@@ -1491,7 +1498,7 @@ export default function HomeScreen() {
                   chipSize={26}
                   radius={7}
                 />
-                <Text style={styles.formCardTitle}>NUTRITION</Text>
+                <Text style={styles.formCardTitle}>MEAL</Text>
               </View>
 
               {/* Meal limit is the hero — big kcal left + bar */}
@@ -1640,10 +1647,12 @@ export default function HomeScreen() {
                   </Text>
                 </TouchableOpacity>
               )}
-            </Card>
+              </View>
 
-            {/* Coach Note Card */}
-            <Card style={styles.formCard}>
+              <View style={styles.panelDivider} />
+
+              {/* Subsection 4: Questions */}
+              <View style={[styles.panelSubsection, styles.panelSubsectionLast]}>
               <View style={styles.formCardHeader}>
                 <Chip
                   iconKey="chat"
@@ -1653,7 +1662,7 @@ export default function HomeScreen() {
                   chipSize={26}
                   radius={7}
                 />
-                <Text style={styles.formCardTitle}>COACH NOTE</Text>
+                <Text style={styles.formCardTitle}>QUESTIONS</Text>
               </View>
 
               <FieldLabel>Questions for your coach</FieldLabel>
@@ -1678,6 +1687,7 @@ export default function HomeScreen() {
                 maxLength={2000}
                 textAlignVertical="top"
               />
+              </View>
             </Card>
 
             {submitError !== null && (
@@ -1802,9 +1812,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 12,
   },
+  // coachCard stays a TouchableOpacity (not wrapped in the Card component,
+  // which renders a View) so it matches Card's exact recipe by hand: 24px
+  // radius, translucent white fill, translucent white border, cardShadow.
+  // The navy left-accent border is layered on top of that base border.
   coachCard: {
-    backgroundColor: T.white,
-    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
     padding: 14,
     borderLeftWidth: 3,
     borderLeftColor: T.primary,
@@ -1841,12 +1857,13 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bodyRegular,
     lineHeight: 17,
   },
+  // tasksCard/statCard are now rendered through the <Card> primitive
+  // (lib/design-system.tsx) — these style objects only carry overrides
+  // (padding/margin/flex) layered on top of Card's own 24px radius,
+  // translucent fill, border, and shadow.
   tasksCard: {
-    backgroundColor: T.white,
-    borderRadius: 20,
     padding: 18,
     marginBottom: 12,
-    ...cardShadow,
   },
   tasksHeaderRow: {
     flexDirection: 'row',
@@ -1935,10 +1952,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: T.white,
-    borderRadius: 16,
     padding: 14,
-    ...cardShadow,
   },
   statCardHeader: {
     flexDirection: 'row',
@@ -1975,14 +1989,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
-  formSectionLabel: {
-    marginTop: 8,
-    marginBottom: 10,
-  },
-  formCard: {
-    borderRadius: 16,
-    padding: 16,
+  // Single "Today" panel (Card, unmodified 24px/frosted-fill/border from
+  // lib/design-system.tsx) wrapping Steps+Weight, Weight OCR, Meal, and
+  // Questions as light-divider-separated subsections instead of three
+  // separate Card boundaries. No radius/padding override here — letting
+  // Card's own 24px win is the point (see formCard finding).
+  todayPanel: {
     marginBottom: 12,
+  },
+  todayPanelTitle: {
+    fontSize: 20,
+    fontFamily: fontFamily.headingBold,
+    fontWeight: '700',
+    color: T.onSurface,
+    marginBottom: 16,
+  },
+  panelSubsection: {
+    marginBottom: 4,
+  },
+  panelSubsectionLast: {
+    marginBottom: 0,
+  },
+  panelDivider: {
+    height: 1,
+    backgroundColor: T.border,
+    marginVertical: 16,
   },
   formCardHeader: {
     flexDirection: 'row',
