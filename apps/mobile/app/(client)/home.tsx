@@ -242,6 +242,14 @@ export default function HomeScreen() {
   const mealInputRef = useRef<TextInput>(null);
   const questionsInputRef = useRef<TextInput>(null);
 
+  // Per-field "dirty since last load" tracker. loadData() now fires silently
+  // on every tab focus (not just mount), so it must not clobber a field the
+  // user is actively mid-edit on. Set true in each field's onChangeText;
+  // reset to false once loadData applies a fresh value cleanly (i.e. it
+  // wasn't dirty at that moment) and after a successful submit, since the
+  // submitted value becomes the new server-agreed baseline.
+  const dirtyFieldsRef = useRef({ steps: false, weight: false, questions: false });
+
   const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     setFetchError(false);
@@ -372,9 +380,18 @@ export default function HomeScreen() {
       setStreak(computedStreak);
 
       if (todayRow) {
-        setSteps(todayRow.steps !== null ? String(todayRow.steps) : '');
-        setWeight(todayRow.weight !== null ? todayRow.weight.toFixed(1) : '');
-        setQuestions(todayRow.questions ?? '');
+        // Skip overwriting any field the user is actively mid-edit on (see
+        // dirtyFieldsRef above) — this silent load fires on every tab focus,
+        // and a background refetch must never discard an unsaved keystroke.
+        if (!dirtyFieldsRef.current.steps) {
+          setSteps(todayRow.steps !== null ? String(todayRow.steps) : '');
+        }
+        if (!dirtyFieldsRef.current.weight) {
+          setWeight(todayRow.weight !== null ? todayRow.weight.toFixed(1) : '');
+        }
+        if (!dirtyFieldsRef.current.questions) {
+          setQuestions(todayRow.questions ?? '');
+        }
       }
 
       if (puResult.data) {
@@ -802,6 +819,12 @@ export default function HomeScreen() {
       const { error: rpcError } = await supabase.rpc('update_today_log', args);
       if (!rpcError) {
         dailyLogSuccess = true;
+        // Submitted values become the new server-agreed baseline — clear
+        // dirty flags so the next silent loadData() can sync these fields
+        // again (e.g. if edited from another device).
+        dirtyFieldsRef.current.steps = false;
+        dirtyFieldsRef.current.weight = false;
+        dirtyFieldsRef.current.questions = false;
         setTodayLog((prev) => ({
           ...(prev ?? {
             client_id: userId ?? '',
@@ -1387,6 +1410,7 @@ export default function HomeScreen() {
                 editable={!submitSuccess}
                 onChangeText={(v) => {
                   setSteps(v);
+                  dirtyFieldsRef.current.steps = true;
                   setSubmitSuccess(false);
                   markManualOverrideToday(getTodayISO());
                 }}
@@ -1410,6 +1434,7 @@ export default function HomeScreen() {
                   editable={!submitSuccess}
                   onChangeText={(v) => {
                     setWeight(v);
+                    dirtyFieldsRef.current.weight = true;
                     setSubmitSuccess(false);
                     setWeightOcrState((s) => ({ ...s, suggestedValue: null }));
                   }}
@@ -1657,6 +1682,7 @@ export default function HomeScreen() {
                 editable={!submitSuccess}
                 onChangeText={(v) => {
                   setQuestions(v);
+                  dirtyFieldsRef.current.questions = true;
                   setSubmitSuccess(false);
                 }}
                 placeholder="Any questions or notes for your coach"

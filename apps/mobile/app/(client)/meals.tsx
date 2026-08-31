@@ -54,6 +54,13 @@ type MealCardState = {
   saving: boolean;
   error: string | null;
   success: boolean;
+  // True once the user has edited `description` since the last successful
+  // load/save for this card. loadData() fires silently on every tab focus
+  // (not just mount), so while dirty it must skip overwriting `description`
+  // from the server — otherwise a background refetch can silently discard
+  // an unsaved keystroke. Cleared on a successful save for this card, since
+  // the saved value becomes the new server-agreed baseline.
+  dirty: boolean;
 };
 
 const MEAL_TYPES = MEAL_TYPE_ORDER;
@@ -75,6 +82,7 @@ export default function MealsScreen() {
       saving: false,
       error: null,
       success: false,
+      dirty: false,
     },
     lunch: {
       description: '',
@@ -85,6 +93,7 @@ export default function MealsScreen() {
       saving: false,
       error: null,
       success: false,
+      dirty: false,
     },
     dinner: {
       description: '',
@@ -95,6 +104,7 @@ export default function MealsScreen() {
       saving: false,
       error: null,
       success: false,
+      dirty: false,
     },
     snack: {
       description: '',
@@ -105,6 +115,7 @@ export default function MealsScreen() {
       saving: false,
       error: null,
       success: false,
+      dirty: false,
     },
   });
 
@@ -175,9 +186,16 @@ export default function MealsScreen() {
           for (const row of mealsResult.data) {
             const mType = row.meal_type as MealType;
             if (updated[mType]) {
+              const isDirty = updated[mType].dirty;
               updated[mType] = {
                 ...updated[mType],
-                description: row.description ?? '',
+                // Skip overwriting the live-edited description while the
+                // user is mid-edit on this card (see MealCardState.dirty
+                // above) — savedDescription still tracks the true
+                // server value regardless, so kcal-left stays correct.
+                description: isDirty
+                  ? updated[mType].description
+                  : row.description ?? '',
                 savedDescription: row.description ?? '',
                 existingPhotoKey: row.photo_key ?? null,
                 photoKey: row.photo_key ?? null,
@@ -349,6 +367,9 @@ export default function MealsScreen() {
           success: true,
           error: null,
           savedDescription: card.description.trim(),
+          // Saved value is now the server-agreed baseline — future silent
+          // loadData() calls may sync this card's description again.
+          dirty: false,
         },
       }));
       playSuccessAnim(type);
@@ -462,6 +483,7 @@ export default function MealsScreen() {
                       [type]: {
                         ...prev[type],
                         description: v,
+                        dirty: true,
                         success: false,
                         error: null,
                       },
