@@ -605,6 +605,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
     paddingTop: 52,
+    // Bottom padding clears the floating capsule tab bar (~64px tall,
+    // floated `insets.bottom + 16` above the screen edge — see
+    // (client)/_layout.tsx) plus breathing room for the largest expected
+    // safe-area inset.
+    paddingBottom: 140,
     backgroundColor: 'transparent',
   },
   heading: {

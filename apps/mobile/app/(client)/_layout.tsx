@@ -173,7 +173,10 @@ function CustomTabBar({
       style={[
         styles.tabBarContainer,
         {
-          paddingBottom: Math.max(insets.bottom, 8),
+          // Float the capsule above the device's safe-area bottom inset
+          // (home indicator / gesture-nav bar) instead of sitting flush
+          // against it.
+          bottom: insets.bottom + 16,
         },
       ]}
     >
@@ -286,11 +289,17 @@ export default function ClientLayout() {
 
 const styles = StyleSheet.create({
   tabBarContainer: {
-    backgroundColor: T.white,
-    borderTopColor: T.border,
-    borderTopWidth: 1,
-    paddingTop: 8,
-    position: 'relative',
+    // Floating capsule: lifted off the screen edges and above the safe
+    // area (see the inline `bottom` offset above), translucent frosted
+    // fill, fully rounded, no top border line.
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    borderRadius: 32,
+    paddingTop: 10,
+    paddingBottom: 10,
+    zIndex: 20,
     ...cardShadow,
   },
   slidingIndicator: {
