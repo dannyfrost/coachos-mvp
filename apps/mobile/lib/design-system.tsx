@@ -37,13 +37,20 @@ export const T = {
 } as const;
 
 export const fontFamily = {
-  headingBold: 'Manrope_700Bold',
-  headingExtraBold: 'Manrope_800ExtraBold',
-  bodyRegular: 'Inter_400Regular',
-  bodyMedium: 'Inter_500Medium',
-  bodySemiBold: 'Inter_600SemiBold',
-  bodyBold: 'Inter_700Bold',
+  headingBold: 'PublicSans_700Bold',
+  headingExtraBold: 'PublicSans_800ExtraBold',
+  bodyRegular: 'PublicSans_400Regular',
+  bodyMedium: 'PublicSans_500Medium',
+  bodySemiBold: 'PublicSans_600SemiBold',
+  bodyBold: 'PublicSans_700Bold',
 };
+
+export const screenBackground: ViewStyle = {
+  flex: 1,
+  backgroundColor: '#fdf6ee', // peach base
+};
+
+export const screenWashColors: [string, string] = ['#fdf1e4', '#e8f1fb']; // peach -> blue sky
 
 export const cardShadow = Platform.select({
   ios: {
@@ -139,6 +146,34 @@ export function Badge({
         {labelOverride ?? s.label}
       </Text>
     </View>
+  );
+}
+
+export function StatusWord({
+  status,
+  labelOverride,
+  style,
+}: {
+  status: string;
+  labelOverride?: string;
+  style?: StyleProp<TextStyle>;
+}) {
+  const s = BADGE_MAP[status.toLowerCase()] || { text: T.muted, label: status };
+  return (
+    <Text
+      style={[
+        {
+          fontFamily: fontFamily.bodySemiBold,
+          fontWeight: '600',
+          fontSize: 14,
+          color: s.text,
+          textDecorationLine: 'underline',
+        },
+        style,
+      ]}
+    >
+      {labelOverride ?? s.label}
+    </Text>
   );
 }
 
@@ -283,15 +318,13 @@ export function Avatar({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <LinearGradient
-      colors={[T.primary, T.primaryMid]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+    <View
       style={[
         {
           width: size,
           height: size,
           borderRadius: size / 2,
+          backgroundColor: T.primary,
           alignItems: 'center',
           justifyContent: 'center',
         },
@@ -308,7 +341,7 @@ export function Avatar({
       >
         {initials}
       </Text>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -320,11 +353,11 @@ export function initialsOf(name: string): string {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: T.white,
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 24,
     padding: 16,
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.5)',
     ...cardShadow,
   },
   badge: {
