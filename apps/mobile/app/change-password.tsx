@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: T.border,
-    backgroundColor: T.surface,
+    backgroundColor: 'transparent',
   },
   backLink: {
     fontSize: 15,

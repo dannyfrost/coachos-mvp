@@ -26,6 +26,7 @@ import {
   inputStyle,
   screenBackground,
   screenWashColors,
+  TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
 import { Chip } from '../../lib/icons';
 import { computeStreak, fmtDateShort, getTodayISO } from '../../lib/stats';
@@ -609,7 +610,7 @@ const styles = StyleSheet.create({
     // floated `insets.bottom + 16` above the screen edge — see
     // (client)/_layout.tsx) plus breathing room for the largest expected
     // safe-area inset.
-    paddingBottom: 140,
+    paddingBottom: TAB_BAR_CLEARANCE,
     backgroundColor: 'transparent',
   },
   heading: {

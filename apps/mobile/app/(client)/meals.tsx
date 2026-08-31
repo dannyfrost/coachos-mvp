@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,8 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
   T,
@@ -25,13 +26,28 @@ import {
   FieldLabel,
   SectionLabel,
   inputStyle,
+  screenBackground,
+  screenWashColors,
+  TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
-import { MEAL_CAP, MEAL_KCAL, MealType, computeKcalLeft } from '../../lib/mealBudget';
+import {
+  MEAL_CAP,
+  MEAL_KCAL,
+  MEAL_TYPE_ORDER,
+  MealType,
+  computeKcalLeft,
+} from '../../lib/mealBudget';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 
 type MealCardState = {
   description: string;
+  // Server-confirmed description, set only on initial load (from the
+  // meal_entries row) and after a successful save — never on keystrokes.
+  // loggedMealTypes below is derived from this, not `description`, so a
+  // sitting's slice only fills (and kcal-left only drops) once the save
+  // actually persists, not while the user is mid-edit.
+  savedDescription: string;
   photoUri: string | null;
   photoKey: string | null;
   existingPhotoKey: string | null;
@@ -40,12 +56,7 @@ type MealCardState = {
   success: boolean;
 };
 
-const MEAL_TYPES: { type: MealType; label: string }[] = [
-  { type: 'breakfast', label: 'Breakfast' },
-  { type: 'lunch', label: 'Lunch' },
-  { type: 'dinner', label: 'Dinner' },
-  { type: 'snack', label: 'Snack' },
-];
+const MEAL_TYPES = MEAL_TYPE_ORDER;
 
 export default function MealsScreen() {
   const [loading, setLoading] = useState(true);
@@ -57,6 +68,7 @@ export default function MealsScreen() {
   const [cards, setCards] = useState<Record<MealType, MealCardState>>({
     breakfast: {
       description: '',
+      savedDescription: '',
       photoUri: null,
       photoKey: null,
       existingPhotoKey: null,
@@ -66,6 +78,7 @@ export default function MealsScreen() {
     },
     lunch: {
       description: '',
+      savedDescription: '',
       photoUri: null,
       photoKey: null,
       existingPhotoKey: null,
@@ -75,6 +88,7 @@ export default function MealsScreen() {
     },
     dinner: {
       description: '',
+      savedDescription: '',
       photoUri: null,
       photoKey: null,
       existingPhotoKey: null,
@@ -84,6 +98,7 @@ export default function MealsScreen() {
     },
     snack: {
       description: '',
+      savedDescription: '',
       photoUri: null,
       photoKey: null,
       existingPhotoKey: null,
@@ -163,6 +178,7 @@ export default function MealsScreen() {
               updated[mType] = {
                 ...updated[mType],
                 description: row.description ?? '',
+                savedDescription: row.description ?? '',
                 existingPhotoKey: row.photo_key ?? null,
                 photoKey: row.photo_key ?? null,
               };
@@ -185,9 +201,14 @@ export default function MealsScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  // Refetch on every tab focus (silent — no full-screen spinner), not just
+  // mount, so switching between Home and Meals never shows stale
+  // meal_entries data or a kcal-left number that disagrees between tabs.
+  useFocusEffect(
+    useCallback(() => {
+      loadData({ silent: true });
+    }, [loadData])
+  );
 
   const handlePickPhoto = async (type: MealType) => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -327,6 +348,7 @@ export default function MealsScreen() {
           photoUri: null,
           success: true,
           error: null,
+          savedDescription: card.description.trim(),
         },
       }));
       playSuccessAnim(type);
@@ -343,22 +365,29 @@ export default function MealsScreen() {
   };
 
   // Which sittings are logged today, for the meal-limit hero + progress bar.
-  // `cards` holds the same underlying meal_entries data this screen loads
-  // (loadData's mealsResult query) plus live edits, and a sitting counts as
-  // logged the moment its description is a non-empty trimmed string — same
-  // rule (and same live-edit-inclusive source) Home's Task 3 uses for its
-  // `loggedMealTypes` derivation, so the two screens' kcal-left numbers never
-  // drift from one another when navigating between tabs.
+  // Derived from `savedDescription` (server-confirmed: set on load and after
+  // a successful save only) rather than the live-edited `description` field,
+  // so a slice fills — and kcal-left drops — only once a save actually
+  // persists, not on every keystroke. Home's `loggedMealTypes` derivation
+  // (home.tsx) uses the equivalent `savedDescription` marker on its own
+  // `mealEntries` state, so the two screens' kcal-left numbers agree.
   const loggedMealTypes: MealType[] = (Object.keys(cards) as MealType[]).filter(
-    (t) => cards[t].description.trim().length > 0
+    (t) => cards[t].savedDescription.trim().length > 0
   );
   const kcalLeft = computeKcalLeft(loggedMealTypes);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: T.surface }}
-    >
+    <View style={screenBackground}>
+      <LinearGradient
+        colors={screenWashColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+      >
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
@@ -518,7 +547,8 @@ export default function MealsScreen() {
           </>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -531,8 +561,8 @@ const styles = StyleSheet.create({
     // floated `insets.bottom + 16` above the screen edge — see
     // (client)/_layout.tsx) plus breathing room for the largest expected
     // safe-area inset.
-    paddingBottom: 140,
-    backgroundColor: T.surface,
+    paddingBottom: TAB_BAR_CLEARANCE,
+    backgroundColor: 'transparent',
   },
   heading: {
     fontSize: 22,

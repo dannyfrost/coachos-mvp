@@ -52,6 +52,13 @@ export const screenBackground: ViewStyle = {
 
 export const screenWashColors: [string, string] = ['#fdf1e4', '#e8f1fb']; // peach -> blue sky
 
+// Bottom padding every scrollable client screen adds to its outermost
+// content style so scroll content clears the floating capsule tab bar
+// (~64px tall, floated `insets.bottom + 16` above the screen edge — see
+// (client)/_layout.tsx) plus breathing room for the largest expected
+// safe-area inset.
+export const TAB_BAR_CLEARANCE = 140;
+
 export const cardShadow = Platform.select({
   ios: {
     shadowColor: '#191c1e',
@@ -110,44 +117,6 @@ export const BADGE_MAP: Record<string, { bg: string; text: string; label: string
   '48h': { bg: T.amberBg, text: T.amber, label: '48h' },
   '72h': { bg: T.redBg, text: T.red, label: '72h' },
 };
-
-export function Badge({
-  status,
-  small,
-  labelOverride,
-  style,
-}: {
-  status: string;
-  small?: boolean;
-  labelOverride?: string;
-  style?: StyleProp<ViewStyle>;
-}) {
-  const s = BADGE_MAP[status.toLowerCase()] || {
-    bg: '#f3f4f6',
-    text: T.muted,
-    label: status,
-  };
-  return (
-    <View
-      style={[
-        styles.badge,
-        { backgroundColor: s.bg },
-        small ? styles.badgeSmall : styles.badgeNormal,
-        style,
-      ]}
-    >
-      <Text
-        style={[
-          styles.badgeText,
-          { color: s.text },
-          small ? styles.badgeTextSmall : styles.badgeTextNormal,
-        ]}
-      >
-        {labelOverride ?? s.label}
-      </Text>
-    </View>
-  );
-}
 
 export function StatusWord({
   status,
@@ -359,31 +328,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
     ...cardShadow,
-  },
-  badge: {
-    alignSelf: 'flex-start',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-  },
-  badgeNormal: {
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-  },
-  badgeSmall: {
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-  },
-  badgeText: {
-    fontFamily: fontFamily.bodyBold,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  badgeTextNormal: {
-    fontSize: 11,
-  },
-  badgeTextSmall: {
-    fontSize: 10,
   },
   btnWrapper: {
     borderRadius: 8,

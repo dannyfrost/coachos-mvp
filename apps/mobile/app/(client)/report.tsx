@@ -23,6 +23,7 @@ import {
   SectionLabel,
   screenBackground,
   screenWashColors,
+  TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
     // floated `insets.bottom + 16` above the screen edge — see
     // (client)/_layout.tsx) plus breathing room for the largest expected
     // safe-area inset.
-    paddingBottom: 140,
+    paddingBottom: TAB_BAR_CLEARANCE,
     backgroundColor: 'transparent',
   },
   heading: {

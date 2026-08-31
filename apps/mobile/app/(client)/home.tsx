@@ -43,10 +43,12 @@ import {
   screenBackground,
   screenWashColors,
   StatusWord,
+  TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
 import {
   MEAL_CAP,
   MEAL_KCAL,
+  MEAL_TYPE_ORDER,
   MealType,
   computeKcalLeft,
   sittingSliceState,
@@ -81,15 +83,15 @@ import {
 } from '../../lib/weightOcrState';
 import CompletionRing from '../../components/CompletionRing';
 
-const MEAL_OPTIONS: { type: MealType; label: string }[] = [
-  { type: 'breakfast', label: 'Breakfast' },
-  { type: 'lunch', label: 'Lunch' },
-  { type: 'dinner', label: 'Dinner' },
-  { type: 'snack', label: 'Snack' },
-];
+const MEAL_OPTIONS = MEAL_TYPE_ORDER;
 
 type MealEntryState = {
   description: string;
+  // Server-confirmed description, set only from loadData's meal_entries
+  // query and after a successful save — never on keystrokes. loggedMealTypes
+  // below is derived from this, not `description`, so a sitting's slice only
+  // fills (and kcal-left only drops) once the save actually persists.
+  savedDescription: string;
   photoUri: string | null;
   photoKey: string | null;
   existingPhotoKey: string | null;
@@ -130,12 +132,15 @@ const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 // Maps account/subscription status onto a single StatusWord key (see
 // lib/design-system.tsx's BADGE_MAP). Spec: "Status = one underlined word
 // under the date. No paragraph banner." — 'green' (label "On Track") is the
-// default healthy state; problem states take priority over it.
+// default healthy state; problem states take priority over it. Returns null
+// while userStatus hasn't loaded yet (or failed to load) — callers must
+// render nothing rather than pass null into StatusWord, since "On Track" is
+// a specific, potentially wrong claim, not a safe default for "unknown".
 function getStatusKey(
   userStatus: UserStatus | null,
   subStatus: SubStatus | null,
-): string {
-  if (!userStatus) return 'green';
+): string | null {
+  if (!userStatus) return null;
   if (userStatus === 'paused') return 'paused';
   if (
     userStatus === 'deactivated' ||
@@ -207,10 +212,10 @@ export default function HomeScreen() {
   const [existingPhotoKey, setExistingPhotoKey] = useState<string | null>(null);
 
   const [mealEntries, setMealEntries] = useState<Record<MealType, MealEntryState>>({
-    breakfast: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-    lunch: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-    dinner: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-    snack: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    breakfast: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    lunch: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    dinner: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    snack: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
   });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -402,16 +407,17 @@ export default function HomeScreen() {
 
       if (mealsResult.data) {
         const loadedMap: Record<MealType, MealEntryState> = {
-          breakfast: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-          lunch: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-          dinner: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-          snack: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          breakfast: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          lunch: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          dinner: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          snack: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
         };
         for (const row of mealsResult.data) {
           const mType = row.meal_type as MealType;
           if (loadedMap[mType]) {
             loadedMap[mType] = {
               description: row.description ?? '',
+              savedDescription: row.description ?? '',
               photoUri: null,
               photoKey: row.photo_key ?? null,
               existingPhotoKey: row.photo_key ?? null,
@@ -432,10 +438,6 @@ export default function HomeScreen() {
     setRefreshing(true);
     await loadData({ silent: true });
     setRefreshing(false);
-  }, [loadData]);
-
-  useEffect(() => {
-    loadData();
   }, [loadData]);
 
   const stepsSyncRanRef = useRef(false);
@@ -485,48 +487,16 @@ export default function HomeScreen() {
     })();
   }, [userId]);
 
+  // Refetch on every tab focus (silent — no full-screen spinner), not just
+  // mount. loadData's own Promise.all already covers unread-count and
+  // latest-message (what this effect used to fetch by hand) *and*
+  // meal_entries/daily_logs, so switching between Home and Meals never shows
+  // stale data — including the kcal-left hero number, which must agree
+  // between tabs. Same pattern as report.tsx's silent focus-refetch.
   useFocusEffect(
     useCallback(() => {
-      let isMounted = true;
-      (async () => {
-        try {
-          const supabase = createMobileSupabaseClient();
-          const {
-            data: { session: sess },
-          } = await supabase.auth.getSession();
-          if (!sess?.user?.id || !isMounted) return;
-
-          const [{ count }, { data: latestMsg }] = await Promise.all([
-            supabase
-              .from('messages')
-              .select('*', { count: 'exact', head: true })
-              .eq('recipient_id', sess.user.id)
-              .is('read_at', null),
-            supabase
-              .from('messages')
-              .select('id, content, sender_id, recipient_id, created_at, read_at')
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle(),
-          ]);
-
-          if (isMounted) {
-            if (typeof count === 'number') {
-              setUnreadCount(count);
-            }
-            if (latestMsg) {
-              setLatestMessage(latestMsg as MessagePreview);
-            }
-          }
-        } catch {
-          // Silently ignore background badge refresh errors
-        }
-      })();
-
-      return () => {
-        isMounted = false;
-      };
-    }, [])
+      loadData({ silent: true });
+    }, [loadData])
   );
 
   const runWeightOcr = async (photoUri: string) => {
@@ -876,6 +846,7 @@ export default function HomeScreen() {
             ...prev,
             [selectedMealType]: {
               description: mealDescription.trim(),
+              savedDescription: mealDescription.trim(),
               photoUri: null,
               photoKey: finalPhotoKey,
               existingPhotoKey: finalPhotoKey,
@@ -935,10 +906,14 @@ export default function HomeScreen() {
   // state. Deriving loggedMealTypes from it (rather than a fresh useState, as
   // the brief's illustrative snippet suggested) keeps this screen and the
   // Meals tab (Task 4) reading the same underlying source of truth, since both
-  // screens query the same table and both mark a sitting "logged" by a
-  // non-empty description — matching the existing `mealsDone` check below.
+  // screens query the same table. Filtering on `savedDescription` (set only
+  // on load / after a successful save, never on keystrokes — see
+  // MealEntryState) rather than the live-edited `description` field means a
+  // slice only fills — and kcal-left only drops — once a save actually
+  // persists, matching spec: "Saving or submitting a sitting fills that
+  // slice. Selected-but-not-logged sitting is outlined."
   const loggedMealTypes: MealType[] = (Object.keys(mealEntries) as MealType[]).filter(
-    (t) => mealEntries[t].description.trim().length > 0
+    (t) => mealEntries[t].savedDescription.trim().length > 0
   );
   const kcalLeft = computeKcalLeft(loggedMealTypes);
 
@@ -1011,6 +986,18 @@ export default function HomeScreen() {
         handlePickPhoto();
       },
     },
+    {
+      id: 'questions',
+      label: 'Coach Questions',
+      iconKey: 'chat',
+      done: (todayLog?.questions ?? null) !== null || (questions.trim().length > 0 && submitSuccess),
+      optional: false,
+      chipBg: '#ede9fe',
+      chipColor: '#6d28d9',
+      onTap: () => {
+        questionsInputRef.current?.focus();
+      },
+    },
   ];
 
   const doneCount = tasks.filter((t) => t.done).length;
@@ -1018,16 +1005,6 @@ export default function HomeScreen() {
 
   const [collapsed, setCollapsed] = useState(true);
   const hasUserToggledRef = useRef(false);
-  const initialCollapseSetRef = useRef(false);
-
-  useEffect(() => {
-    if (!loading && !initialCollapseSetRef.current) {
-      initialCollapseSetRef.current = true;
-      if (!hasUserToggledRef.current && allTasksDone) {
-        setCollapsed(true);
-      }
-    }
-  }, [loading, allTasksDone]);
 
   const toggleCollapsed = () => {
     hasUserToggledRef.current = true;
@@ -1125,7 +1102,9 @@ export default function HomeScreen() {
             <Text style={styles.greetingSub}>{greetingText}</Text>
             <Text style={styles.greetingName}>{clientFirstName}</Text>
             <Text style={styles.greetingDate}>{todayFormattedDate}</Text>
-            <StatusWord status={statusKey} style={styles.statusWord} />
+            {statusKey !== null && (
+              <StatusWord status={statusKey} style={styles.statusWord} />
+            )}
           </View>
           <View style={styles.greetingRight}>
             <TouchableOpacity
@@ -1734,7 +1713,7 @@ const styles = StyleSheet.create({
     // floated `insets.bottom + 16` above the screen edge — see
     // (client)/_layout.tsx) plus breathing room for the largest expected
     // safe-area inset.
-    paddingBottom: 140,
+    paddingBottom: TAB_BAR_CLEARANCE,
     // Transparent so the peach -> blue sky wash (screenWashColors, rendered
     // behind this ScrollView) shows through around the frosted Cards.
     backgroundColor: 'transparent',
