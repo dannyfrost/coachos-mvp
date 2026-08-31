@@ -250,6 +250,22 @@ export default function HomeScreen() {
   // submitted value becomes the new server-agreed baseline.
   const dirtyFieldsRef = useRef({ steps: false, weight: false, questions: false });
 
+  // Per-meal-type "description dirty since last load" tracker — same
+  // rationale as dirtyFieldsRef above, but keyed by meal type since
+  // mealEntries is a per-meal-type record rather than a single field.
+  // Set true in the meal description TextInput's onChangeText (for
+  // whichever meal type is currently selected); cleared after a
+  // successful save for that meal type. loadData()'s silent refetch must
+  // not clobber a meal type's live-edited `description` while it merges
+  // in fresh savedDescription/photoKey/existingPhotoKey for that same
+  // meal type.
+  const dirtyMealDescriptionRef = useRef<Record<MealType, boolean>>({
+    breakfast: false,
+    lunch: false,
+    dinner: false,
+    snack: false,
+  });
+
   const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     setFetchError(false);
@@ -441,7 +457,22 @@ export default function HomeScreen() {
             };
           }
         }
-        setMealEntries(loadedMap);
+        // Skip overwriting `description` for any meal type the user is
+        // actively mid-edit on (see dirtyMealDescriptionRef above) — but
+        // still adopt the freshly loaded savedDescription/photoKey/
+        // existingPhotoKey for that meal type, same as a clean load.
+        setMealEntries((prev) => {
+          const merged = { ...loadedMap };
+          for (const mType of Object.keys(merged) as MealType[]) {
+            if (dirtyMealDescriptionRef.current[mType]) {
+              merged[mType] = {
+                ...merged[mType],
+                description: prev[mType].description,
+              };
+            }
+          }
+          return merged;
+        });
       }
     } catch {
       setFetchError(true);
@@ -862,6 +893,11 @@ export default function HomeScreen() {
 
         if (!upsertError) {
           mealSuccess = true;
+          // Submitted description becomes the new server-agreed baseline
+          // for this meal type — clear its dirty flag so the next silent
+          // loadData() can sync it again (e.g. if edited from another
+          // device), mirroring dirtyFieldsRef's clear-on-submit above.
+          dirtyMealDescriptionRef.current[selectedMealType] = false;
           setPhotoKey(finalPhotoKey);
           setExistingPhotoKey(finalPhotoKey);
           setPhotoUri(null);
@@ -1590,6 +1626,7 @@ export default function HomeScreen() {
                   setMealDescription(v);
                   setSubmitSuccess(false);
                   if (selectedMealType) {
+                    dirtyMealDescriptionRef.current[selectedMealType] = true;
                     setMealEntries((prev) => ({
                       ...prev,
                       [selectedMealType]: {
