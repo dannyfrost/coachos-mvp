@@ -23,12 +23,12 @@ import {
   Card,
   Btn,
   FieldLabel,
+  SectionLabel,
   inputStyle,
 } from '../../lib/design-system';
+import { MEAL_CAP, MEAL_KCAL, MealType, computeKcalLeft } from '../../lib/mealBudget';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
-
-type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 type MealCardState = {
   description: string;
@@ -342,6 +342,18 @@ export default function MealsScreen() {
     }
   };
 
+  // Which sittings are logged today, for the meal-limit hero + progress bar.
+  // `cards` holds the same underlying meal_entries data this screen loads
+  // (loadData's mealsResult query) plus live edits, and a sitting counts as
+  // logged the moment its description is a non-empty trimmed string — same
+  // rule (and same live-edit-inclusive source) Home's Task 3 uses for its
+  // `loggedMealTypes` derivation, so the two screens' kcal-left numbers never
+  // drift from one another when navigating between tabs.
+  const loggedMealTypes: MealType[] = (Object.keys(cards) as MealType[]).filter(
+    (t) => cards[t].description.trim().length > 0
+  );
+  const kcalLeft = computeKcalLeft(loggedMealTypes);
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -371,7 +383,29 @@ export default function MealsScreen() {
             style={styles.loadingIndicator}
           />
         ) : (
-          MEAL_TYPES.map(({ type, label }) => {
+          <>
+            <Card style={styles.limitCard}>
+              <SectionLabel>TODAY'S MEAL LIMIT</SectionLabel>
+              <View style={styles.mealHeroRow}>
+                <Text style={styles.mealHeroNumber}>{kcalLeft}</Text>
+                <Text style={styles.mealHeroUnit}>kcal left</Text>
+              </View>
+              <View style={styles.mealHeroBarTrack}>
+                <View
+                  style={[
+                    styles.mealHeroBarFill,
+                    {
+                      width: `${Math.max(
+                        0,
+                        Math.min(100, (kcalLeft / MEAL_CAP) * 100)
+                      )}%`,
+                    },
+                  ]}
+                />
+              </View>
+            </Card>
+
+            {MEAL_TYPES.map(({ type, label }) => {
             const card = cards[type];
             const hasSavedDescription = card.description.trim().length > 0;
             const isFocused = focusedField === type;
@@ -380,7 +414,10 @@ export default function MealsScreen() {
 
             return (
               <Card key={type} style={styles.mealCard}>
-                <Text style={styles.mealTitle}>{label}</Text>
+                <View style={styles.mealTitleRow}>
+                  <Text style={styles.mealTitle}>{label}</Text>
+                  <Text style={styles.mealKcalBudget}>{MEAL_KCAL[type]} kcal</Text>
+                </View>
 
                 <FieldLabel>Description</FieldLabel>
                 <TextInput
@@ -476,8 +513,9 @@ export default function MealsScreen() {
                   </Animated.Text>
                 </View>
               </Card>
-            );
-          })
+              );
+            })}
+          </>
         )}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -512,15 +550,59 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bodyMedium,
     fontSize: 14,
   },
+  // Card's own 24px radius/frosted-fill/border (lib/design-system.tsx) is
+  // left unmodified here — only spacing overrides, same as mealCard below.
+  limitCard: {
+    marginBottom: 18,
+  },
+  mealHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  mealHeroNumber: {
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    fontSize: 34,
+    color: T.onSurface,
+  },
+  mealHeroUnit: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodyMedium,
+    color: T.muted,
+  },
+  mealHeroBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: T.surfaceLow,
+    overflow: 'hidden',
+  },
+  mealHeroBarFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: T.primary,
+  },
   mealCard: {
     marginBottom: 18,
+  },
+  mealTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
   mealTitle: {
     fontSize: 16,
     fontFamily: fontFamily.headingBold,
     fontWeight: '700',
     color: T.onSurface,
-    marginBottom: 12,
+  },
+  mealKcalBudget: {
+    fontSize: 12,
+    fontFamily: fontFamily.bodyMedium,
+    color: T.muted,
   },
   input: {
     ...inputStyle,
