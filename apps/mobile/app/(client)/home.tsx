@@ -12,9 +12,10 @@ import {
   StyleSheet,
   Image,
   Animated,
-  BackHandler,
   LayoutAnimation,
   UIManager,
+  ActionSheetIOS,
+  Alert,
 } from 'react-native';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -39,7 +40,17 @@ import {
   initialsOf,
   inputStyle,
   cardShadow,
+  screenBackground,
+  screenWashColors,
+  StatusWord,
 } from '../../lib/design-system';
+import {
+  MEAL_CAP,
+  MEAL_KCAL,
+  MealType,
+  computeKcalLeft,
+  sittingSliceState,
+} from '../../lib/mealBudget';
 import {
   Chip,
   IconFlame,
@@ -69,8 +80,6 @@ import {
   reduceWeightOcrState,
 } from '../../lib/weightOcrState';
 import CompletionRing from '../../components/CompletionRing';
-
-type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 const MEAL_OPTIONS: { type: MealType; label: string }[] = [
   { type: 'breakfast', label: 'Breakfast' },
@@ -118,37 +127,26 @@ type TodayLogArgs = {
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 
-function getBanner(
+// Maps account/subscription status onto a single StatusWord key (see
+// lib/design-system.tsx's BADGE_MAP). Spec: "Status = one underlined word
+// under the date. No paragraph banner." — 'green' (label "On Track") is the
+// default healthy state; problem states take priority over it.
+function getStatusKey(
   userStatus: UserStatus | null,
   subStatus: SubStatus | null,
-): { text: string; bg: string; color: string } | null {
-  if (!userStatus) return null;
-  if (userStatus === 'paused') {
-    return {
-      text: 'Your account is paused. Contact your coach to resume.',
-      bg: T.amberBg,
-      color: T.amber,
-    };
-  }
+): string {
+  if (!userStatus) return 'green';
+  if (userStatus === 'paused') return 'paused';
   if (
     userStatus === 'deactivated' ||
     userStatus === 'suspended' ||
     userStatus === 'banned'
   ) {
-    return {
-      text: 'Your account is not active. Contact your coach.',
-      bg: T.redBg,
-      color: T.red,
-    };
+    return userStatus;
   }
-  if (subStatus === 'expired' || subStatus === 'overdue') {
-    return {
-      text: 'Your subscription has expired. Contact your coach.',
-      bg: T.redBg,
-      color: T.red,
-    };
-  }
-  return null;
+  if (userStatus === 'pending') return 'pending';
+  if (subStatus === 'expired' || subStatus === 'overdue') return subStatus;
+  return 'green';
 }
 
 function isSubmitBlocked(
@@ -207,27 +205,6 @@ export default function HomeScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoKey, setPhotoKey] = useState<string | null>(null);
   const [existingPhotoKey, setExistingPhotoKey] = useState<string | null>(null);
-  const [pickerModalVisible, setPickerModalVisible] = useState(false);
-  const [pendingMealType, setPendingMealType] = useState<MealType | null>(null);
-  const pickerOverlayAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!pickerModalVisible) {
-      pickerOverlayAnim.setValue(0);
-      return;
-    }
-    Animated.timing(pickerOverlayAnim, {
-      toValue: 1,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setPickerModalVisible(false);
-      return true;
-    });
-    return () => sub.remove();
-  }, [pickerModalVisible, pickerOverlayAnim]);
 
   const [mealEntries, setMealEntries] = useState<Record<MealType, MealEntryState>>({
     breakfast: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
@@ -608,6 +585,27 @@ export default function HomeScreen() {
     await runWeightOcr(result.assets[0].uri);
   };
 
+  // Single "From photo" entry point (spec: one quiet control, no visible
+  // Camera / Gallery pair). Offers both existing capture paths via an action
+  // sheet; handleWeightCameraPress / handleWeightGalleryPress are unchanged.
+  const handleFromPhotoPress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Take Photo', 'Choose from Library', 'Cancel'], cancelButtonIndex: 2 },
+        (index) => {
+          if (index === 0) handleWeightCameraPress();
+          if (index === 1) handleWeightGalleryPress();
+        }
+      );
+    } else {
+      Alert.alert('From photo', undefined, [
+        { text: 'Take Photo', onPress: handleWeightCameraPress },
+        { text: 'Choose from Library', onPress: handleWeightGalleryPress },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
   const handleMealTypeChange = (type: MealType | null) => {
     setSelectedMealType(type);
     setSubmitSuccess(false);
@@ -929,6 +927,21 @@ export default function HomeScreen() {
     (todayLog?.weight ?? null) !== null || (weight.trim().length > 0 && submitSuccess);
   const stepsDone =
     (todayLog?.steps ?? null) !== null || (steps.trim().length > 0 && submitSuccess);
+
+  // Which sittings are actually logged today, for the meal-budget hero + slices.
+  // `mealEntries` is server-confirmed data loaded from the `meal_entries` table
+  // (loadData's mealsResult query, keyed by today's log_date) and kept in sync
+  // locally after every successful save — it is NOT separate local/ephemeral
+  // state. Deriving loggedMealTypes from it (rather than a fresh useState, as
+  // the brief's illustrative snippet suggested) keeps this screen and the
+  // Meals tab (Task 4) reading the same underlying source of truth, since both
+  // screens query the same table and both mark a sitting "logged" by a
+  // non-empty description — matching the existing `mealsDone` check below.
+  const loggedMealTypes: MealType[] = (Object.keys(mealEntries) as MealType[]).filter(
+    (t) => mealEntries[t].description.trim().length > 0
+  );
+  const kcalLeft = computeKcalLeft(loggedMealTypes);
+
   const mealsDone =
     Object.values(mealEntries).some((m) => m.description.trim().length > 0) ||
     (mealDescription.trim().length > 0 && submitSuccess);
@@ -1003,7 +1016,7 @@ export default function HomeScreen() {
   const doneCount = tasks.filter((t) => t.done).length;
   const allTasksDone = doneCount === tasks.length;
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const hasUserToggledRef = useRef(false);
   const initialCollapseSetRef = useRef(false);
 
@@ -1078,14 +1091,21 @@ export default function HomeScreen() {
     }
   }
 
-  const banner = getBanner(userStatus, subStatus);
+  const statusKey = getStatusKey(userStatus, subStatus);
   const blocked = isSubmitBlocked(userStatus, subStatus);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: T.surface }}
-    >
+    <View style={screenBackground}>
+      <LinearGradient
+        colors={screenWashColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+      >
       <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.container}
@@ -1105,6 +1125,7 @@ export default function HomeScreen() {
             <Text style={styles.greetingSub}>{greetingText}</Text>
             <Text style={styles.greetingName}>{clientFirstName}</Text>
             <Text style={styles.greetingDate}>{todayFormattedDate}</Text>
+            <StatusWord status={statusKey} style={styles.statusWord} />
           </View>
           <View style={styles.greetingRight}>
             <TouchableOpacity
@@ -1142,14 +1163,6 @@ export default function HomeScreen() {
           <View style={styles.errorBanner}>
             <Text style={styles.errorBannerText}>
               Could not load your data. Pull to retry.
-            </Text>
-          </View>
-        )}
-
-        {banner && (
-          <View style={[styles.statusBanner, { backgroundColor: banner.bg }]}>
-            <Text style={[styles.statusBannerText, { color: banner.color }]}>
-              {banner.text}
             </Text>
           </View>
         )}
@@ -1385,8 +1398,9 @@ export default function HomeScreen() {
               <FieldLabel>Steps</FieldLabel>
               <TextInput
                 ref={stepsInputRef}
-                style={styles.input}
+                style={[styles.input, submitSuccess && styles.inputSaved]}
                 value={steps}
+                editable={!submitSuccess}
                 onChangeText={(v) => {
                   setSteps(v);
                   setSubmitSuccess(false);
@@ -1402,8 +1416,14 @@ export default function HomeScreen() {
               <View style={styles.weightRow}>
                 <TextInput
                   ref={weightInputRef}
-                  style={[styles.input, styles.weightInput, { marginBottom: 0 }]}
+                  style={[
+                    styles.input,
+                    styles.weightInput,
+                    { marginBottom: 0 },
+                    submitSuccess && styles.inputSaved,
+                  ]}
                   value={weight}
+                  editable={!submitSuccess}
                   onChangeText={(v) => {
                     setWeight(v);
                     setSubmitSuccess(false);
@@ -1416,25 +1436,16 @@ export default function HomeScreen() {
                 />
                 <TouchableOpacity
                   style={styles.weightCameraButton}
-                  onPress={handleWeightCameraPress}
-                  disabled={weightOcrBusy}
+                  onPress={handleFromPhotoPress}
+                  disabled={weightOcrBusy || submitSuccess}
                   accessibilityRole="button"
-                  accessibilityLabel="Scan weight from a photo"
+                  accessibilityLabel="Log weight from a photo"
                 >
                   {weightOcrBusy ? (
                     <ActivityIndicator size="small" color={T.primary} />
                   ) : (
                     <Ionicons name="camera" size={20} color={T.primary} />
                   )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.weightCameraButton}
-                  onPress={handleWeightGalleryPress}
-                  disabled={weightOcrBusy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Scan weight from a gallery photo"
-                >
-                  <Ionicons name="image" size={20} color={T.primary} />
                 </TouchableOpacity>
               </View>
 
@@ -1453,7 +1464,7 @@ export default function HomeScreen() {
                     Couldn't read the number — try again?
                   </Text>
                   <TouchableOpacity
-                    onPress={handleWeightCameraPress}
+                    onPress={handleFromPhotoPress}
                     accessibilityRole="button"
                     accessibilityLabel="Retake weight photo"
                   >
@@ -1483,41 +1494,87 @@ export default function HomeScreen() {
                 <Text style={styles.formCardTitle}>NUTRITION</Text>
               </View>
 
-              <FieldLabel>Meal Type</FieldLabel>
-              <TouchableOpacity
-                style={styles.mealPickerTrigger}
-                onPress={() => {
-                  setPendingMealType(selectedMealType);
-                  setPickerModalVisible(true);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Select meal type"
-              >
-                <Text
+              {/* Meal limit is the hero — big kcal left + bar */}
+              <View style={styles.mealHeroRow}>
+                <Text style={styles.mealHeroNumber}>{kcalLeft}</Text>
+                <Text style={styles.mealHeroUnit}>kcal left</Text>
+              </View>
+              <View style={styles.mealHeroBarTrack}>
+                <View
                   style={[
-                    styles.mealPickerTriggerText,
-                    !selectedMealType && styles.placeholderText,
+                    styles.mealHeroBarFill,
+                    {
+                      width: `${Math.max(
+                        0,
+                        Math.min(100, (kcalLeft / MEAL_CAP) * 100)
+                      )}%`,
+                    },
                   ]}
-                >
-                  {selectedMealType
-                    ? MEAL_OPTIONS.find((o) => o.type === selectedMealType)?.label ??
-                      selectedMealType
-                    : 'Select a meal'}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color={T.onSurfaceVar} />
-              </TouchableOpacity>
+                />
+              </View>
 
-              <FieldLabel>Meal description</FieldLabel>
+              {/* The four sitting slices ARE the sitting selector — no
+                  separate "which sitting" picker. */}
+              <View style={styles.sittingSlicesRow}>
+                {MEAL_OPTIONS.map((opt) => {
+                  const sliceState = sittingSliceState(
+                    opt.type,
+                    selectedMealType,
+                    loggedMealTypes
+                  );
+                  return (
+                    <TouchableOpacity
+                      key={opt.type}
+                      style={[
+                        styles.sittingSlice,
+                        sliceState === 'selected' && styles.sittingSliceSelected,
+                        sliceState === 'filled' && styles.sittingSliceFilled,
+                      ]}
+                      onPress={() => handleMealTypeChange(opt.type)}
+                      disabled={submitSuccess}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${opt.label}, ${MEAL_KCAL[opt.type]} kcal, ${
+                        sliceState === 'filled'
+                          ? 'logged'
+                          : sliceState === 'selected'
+                          ? 'selected, not yet saved'
+                          : 'not logged'
+                      }`}
+                      accessibilityState={{ selected: sliceState !== 'empty' }}
+                    >
+                      <Text
+                        style={[
+                          styles.sittingSliceLabel,
+                          sliceState === 'filled' && styles.sittingSliceLabelFilled,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.sittingSliceKcal,
+                          sliceState === 'filled' && styles.sittingSliceKcalFilled,
+                        ]}
+                      >
+                        {MEAL_KCAL[opt.type]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <FieldLabel style={styles.quietFieldLabel}>Description</FieldLabel>
               <TextInput
                 ref={mealInputRef}
                 style={[
                   styles.input,
                   styles.multiline,
-                  mealDescription.trim().length > 0 &&
-                    !mealDescriptionFocused &&
+                  ((mealDescription.trim().length > 0 && !mealDescriptionFocused) ||
+                    submitSuccess) &&
                     styles.inputSaved,
                 ]}
                 value={mealDescription}
+                editable={!submitSuccess}
                 onChangeText={(v) => {
                   setMealDescription(v);
                   setSubmitSuccess(false);
@@ -1536,7 +1593,7 @@ export default function HomeScreen() {
                 placeholder={
                   selectedMealType
                     ? `What did you have for ${selectedMealType}?`
-                    : 'Describe your meal'
+                    : 'Tap a sitting above, then describe your meal'
                 }
                 placeholderTextColor={T.muted}
                 multiline
@@ -1545,7 +1602,7 @@ export default function HomeScreen() {
                 textAlignVertical="top"
               />
 
-              <FieldLabel>Meal photo</FieldLabel>
+              <FieldLabel style={styles.quietFieldLabel}>Photo (optional)</FieldLabel>
               {photoUri || existingPhotoKey ? (
                 <View style={[styles.photoRow, { marginBottom: 0 }]}>
                   {photoUri ? (
@@ -1562,6 +1619,7 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={styles.editPhotoButton}
                     onPress={handlePickPhoto}
+                    disabled={submitSuccess}
                     accessibilityRole="button"
                     accessibilityLabel="Edit meal photo"
                   >
@@ -1573,6 +1631,7 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={[styles.photoButton, { marginBottom: 0 }]}
                   onPress={handlePickPhoto}
+                  disabled={submitSuccess}
                 >
                   <Text style={styles.photoButtonText}>
                     {selectedMealType
@@ -1600,8 +1659,14 @@ export default function HomeScreen() {
               <FieldLabel>Questions for your coach</FieldLabel>
               <TextInput
                 ref={questionsInputRef}
-                style={[styles.input, styles.multiline, { marginBottom: 0 }]}
+                style={[
+                  styles.input,
+                  styles.multiline,
+                  { marginBottom: 0 },
+                  submitSuccess && styles.inputSaved,
+                ]}
                 value={questions}
+                editable={!submitSuccess}
                 onChangeText={(v) => {
                   setQuestions(v);
                   setSubmitSuccess(false);
@@ -1621,15 +1686,19 @@ export default function HomeScreen() {
 
             <Btn
               variant="primary"
-              onPress={handleSubmit}
-              disabled={blocked || submitting}
-              accessibilityLabel="Submit daily log"
+              onPress={submitSuccess ? () => setSubmitSuccess(false) : handleSubmit}
+              disabled={submitting || (!submitSuccess && blocked)}
+              accessibilityLabel={
+                submitSuccess ? "Edit today's log" : "Submit today's log"
+              }
               style={styles.submitButton}
             >
               {submitting ? (
                 <ActivityIndicator color={T.white} />
+              ) : submitSuccess ? (
+                'Edit'
               ) : (
-                'Save Log'
+                "Submit today's log"
               )}
             </Btn>
 
@@ -1641,86 +1710,8 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
-
-      {pickerModalVisible && (
-        <Animated.View
-          style={[styles.modalOverlay, { opacity: pickerOverlayAnim }]}
-        >
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={() => setPickerModalVisible(false)}
-          />
-          <Animated.View
-            style={[
-              styles.modalSheet,
-              {
-                transform: [
-                  {
-                    translateY: pickerOverlayAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [40, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Meal Type</Text>
-              <TouchableOpacity
-                onPress={() => setPickerModalVisible(false)}
-                style={styles.modalCloseButton}
-                accessibilityRole="button"
-                accessibilityLabel="Close meal picker"
-              >
-                <Ionicons name="close" size={22} color={T.onSurfaceVar} />
-              </TouchableOpacity>
-            </View>
-
-            {MEAL_OPTIONS.map((opt) => {
-              const isSelected = pendingMealType === opt.type;
-              return (
-                <TouchableOpacity
-                  key={opt.type}
-                  style={[
-                    styles.mealOptionRow,
-                    isSelected && styles.mealOptionRowSelected,
-                  ]}
-                  onPress={() => setPendingMealType(opt.type)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                >
-                  <Text
-                    style={[
-                      styles.mealOptionText,
-                      isSelected && styles.mealOptionTextSelected,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                  {isSelected && (
-                    <Ionicons name="checkmark" size={20} color={T.primary} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-
-            <Btn
-              variant="primary"
-              onPress={() => {
-                handleMealTypeChange(pendingMealType);
-                setPickerModalVisible(false);
-              }}
-              accessibilityLabel="Confirm meal type selection"
-              style={styles.modalConfirmBtn}
-            >
-              Confirm
-            </Btn>
-          </Animated.View>
-        </Animated.View>
-      )}
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -1729,7 +1720,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
     paddingTop: 52,
-    backgroundColor: T.surface,
+    // Transparent so the peach -> blue sky wash (screenWashColors, rendered
+    // behind this ScrollView) shows through around the frosted Cards.
+    backgroundColor: 'transparent',
   },
   greetingHeader: {
     marginHorizontal: -20,
@@ -2019,88 +2012,84 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bodyMedium,
     fontSize: 14,
   },
-  statusBanner: {
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+  statusWord: {
+    marginTop: 4,
   },
-  statusBannerText: {
-    fontSize: 14,
-    fontFamily: fontFamily.bodyMedium,
-  },
-  mealPickerTrigger: {
-    ...inputStyle,
+  mealHeroRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+    alignItems: 'baseline',
+    gap: 6,
+    marginBottom: 8,
   },
-  mealPickerTriggerText: {
-    fontSize: 15,
-    fontFamily: fontFamily.bodyRegular,
+  mealHeroNumber: {
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    fontSize: 34,
     color: T.onSurface,
   },
-  placeholderText: {
+  mealHeroUnit: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodyMedium,
     color: T.muted,
   },
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'flex-end',
-    zIndex: 50,
-    elevation: 50,
-  },
-  modalSheet: {
-    backgroundColor: T.white,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-    ...cardShadow,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  mealHeroBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: T.surfaceLow,
+    overflow: 'hidden',
     marginBottom: 16,
   },
-  modalTitle: {
-    fontSize: 17,
-    fontFamily: fontFamily.headingBold,
-    fontWeight: '700',
-    color: T.onSurface,
+  mealHeroBarFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: T.primary,
   },
-  modalCloseButton: {
-    padding: 4,
-  },
-  mealOptionRow: {
+  sittingSlicesRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    marginBottom: 6,
+    gap: 8,
+    marginBottom: 16,
   },
-  mealOptionRowSelected: {
+  sittingSlice: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: T.border,
+    backgroundColor: T.white,
+  },
+  sittingSliceSelected: {
+    borderColor: T.primary,
+    borderWidth: 2,
     backgroundColor: T.primaryLight,
   },
-  mealOptionText: {
-    fontSize: 15,
-    fontFamily: fontFamily.bodyMedium,
-    color: T.onSurface,
+  sittingSliceFilled: {
+    backgroundColor: T.primary,
+    borderColor: T.primary,
   },
-  mealOptionTextSelected: {
+  sittingSliceLabel: {
+    fontSize: 12,
     fontFamily: fontFamily.bodySemiBold,
     fontWeight: '600',
-    color: T.primary,
+    color: T.onSurface,
   },
-  modalConfirmBtn: {
-    marginTop: 12,
+  sittingSliceLabelFilled: {
+    color: T.white,
+  },
+  sittingSliceKcal: {
+    fontSize: 11,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.muted,
+    marginTop: 2,
+  },
+  sittingSliceKcalFilled: {
+    color: 'rgba(255,255,255,0.8)',
+  },
+  quietFieldLabel: {
+    fontSize: 9,
+    opacity: 0.65,
+    marginBottom: 4,
   },
   input: {
     ...inputStyle,
