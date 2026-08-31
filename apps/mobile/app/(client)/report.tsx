@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Linking,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import WeightTrendChart from '../../components/WeightTrendChart';
 import StepsBarChart from '../../components/StepsBarChart';
@@ -133,9 +133,11 @@ export default function ReportScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData({ silent: true });
+    }, [loadData])
+  );
 
   const handleOpenPlan = async () => {
     if (!activePlan?.plan_id || !session?.access_token) return;

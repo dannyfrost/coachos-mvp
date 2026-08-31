@@ -24,7 +24,12 @@
           "ocrUseBundled": true
         }
       ],
-      "react-native-health-connect",
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow Coaching to read your step count to auto-fill today's steps."
+        }
+      ],
       "expo-background-task",
       [
         "expo-build-properties",

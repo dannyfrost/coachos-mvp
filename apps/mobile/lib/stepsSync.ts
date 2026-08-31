@@ -1,4 +1,4 @@
-import type { HealthConnectReadResult } from './stepsHealthConnect';
+import type { StepsReadResult } from './stepsPedometer';
 
 /**
  * Pure synchronization decision — no native calls, no storage, no
@@ -12,7 +12,7 @@ export type StepsSyncDecision = { action: 'update'; value: number } | { action: 
 export function decideStepsSync(
   today: string,
   manualOverrideActiveToday: boolean,
-  result: HealthConnectReadResult
+  result: StepsReadResult
 ): StepsSyncDecision {
   void today; // carried for parity with debug logging call sites, not branched on
 

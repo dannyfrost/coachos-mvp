@@ -53,11 +53,11 @@ import {
 } from '../../lib/stats';
 import { extractWeightCandidate } from '../../lib/weightOcr';
 import {
-  isHealthConnectAvailable,
+  isPedometerAvailable,
   hasStepsPermission,
   requestStepsPermission,
   readTodaySteps,
-} from '../../lib/stepsHealthConnect';
+} from '../../lib/stepsPedometer';
 import { decideStepsSync } from '../../lib/stepsSync';
 import {
   markManualOverrideToday,
@@ -468,7 +468,7 @@ export default function HomeScreen() {
 
     (async () => {
       try {
-        const available = await isHealthConnectAvailable();
+        const available = await isPedometerAvailable();
         if (!available) return;
 
         let granted = await hasStepsPermission();
@@ -552,21 +552,7 @@ export default function HomeScreen() {
     }, [])
   );
 
-  const handleWeightCameraPress = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'PERMISSION_DENIED' }));
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
-
-    if (result.canceled || !result.assets[0]) return;
-
-    const photoUri = result.assets[0].uri;
+  const runWeightOcr = async (photoUri: string) => {
     setWeightOcrBusy(true);
     try {
       const ocrResult = await recognizeText(photoUri, 'latin');
@@ -582,11 +568,44 @@ export default function HomeScreen() {
       );
       setWeight(String(value));
       setSubmitSuccess(false);
-    } catch {
+    } catch (err) {
+      console.warn('[weight-ocr] recognizeText failed:', err instanceof Error ? err.message : err);
       setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
     } finally {
       setWeightOcrBusy(false);
     }
+  };
+
+  const handleWeightCameraPress = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'PERMISSION_DENIED' }));
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+    await runWeightOcr(result.assets[0].uri);
+  };
+
+  const handleWeightGalleryPress = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'PERMISSION_DENIED' }));
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+    await runWeightOcr(result.assets[0].uri);
   };
 
   const handleMealTypeChange = (type: MealType | null) => {
@@ -1407,6 +1426,15 @@ export default function HomeScreen() {
                   ) : (
                     <Ionicons name="camera" size={20} color={T.primary} />
                   )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.weightCameraButton}
+                  onPress={handleWeightGalleryPress}
+                  disabled={weightOcrBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scan weight from a gallery photo"
+                >
+                  <Ionicons name="image" size={20} color={T.primary} />
                 </TouchableOpacity>
               </View>
 
