@@ -203,6 +203,8 @@ export default function HomeScreen() {
 
   const [weightOcrState, setWeightOcrState] = useState(initialWeightOcrState);
   const [weightOcrBusy, setWeightOcrBusy] = useState(false);
+  const [stepsSyncBusy, setStepsSyncBusy] = useState(false);
+  const [stepsSyncUnavailable, setStepsSyncUnavailable] = useState(false);
 
   // Meal state for Today's Log quick-add
   const [selectedMealType, setSelectedMealType] = useState<MealType | null>(null);
@@ -488,15 +490,24 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  const stepsSyncRanRef = useRef(false);
-  useEffect(() => {
-    if (!userId || stepsSyncRanRef.current) return;
-    stepsSyncRanRef.current = true;
-
-    (async () => {
+  // Reads the device's live step count and, if there's a newer reading,
+  // syncs it into the Steps field + server. Runs automatically on every
+  // tab focus (see useFocusEffect below), not just once per app session —
+  // a one-shot mount-only version of this used to leave the KPI frozen at
+  // whatever it read the very first time, for the entire app session, with
+  // no way to force a fresh read. `manual` marks a user-triggered refresh
+  // (drives the small refresh button's spinner and its "unavailable" hint).
+  const syncStepsFromPedometer = useCallback(
+    async (manual = false) => {
+      if (!userId) return;
+      if (manual) setStepsSyncBusy(true);
       try {
         const available = await isPedometerAvailable();
-        if (!available) return;
+        if (!available) {
+          if (manual) setStepsSyncUnavailable(true);
+          return;
+        }
+        if (manual) setStepsSyncUnavailable(false);
 
         let granted = await hasStepsPermission();
         if (!granted) {
@@ -510,10 +521,14 @@ export default function HomeScreen() {
         const decision = decideStepsSync(today, overrideActive, result);
 
         if (__DEV__) {
-          console.log('[stepsForegroundSync]', { today, result, overrideActive, decision });
+          console.log('[stepsForegroundSync]', { today, result, overrideActive, decision, manual });
         }
 
-        if (decision.action === 'update') {
+        // decideStepsSync already skips when the user has a manual
+        // override active today (set on every Steps keystroke below), but
+        // guard on dirtyFieldsRef too for the same reason loadData does —
+        // belt-and-suspenders against clobbering an in-progress edit.
+        if (decision.action === 'update' && !dirtyFieldsRef.current.steps) {
           setSteps(String(decision.value));
           setSubmitSuccess(false);
           const supabase = createMobileSupabaseClient();
@@ -531,9 +546,18 @@ export default function HomeScreen() {
           console.log('[stepsForegroundSync] unexpected error', err);
         }
         // Never let steps auto-sync crash or block the Daily Log.
+      } finally {
+        if (manual) setStepsSyncBusy(false);
       }
-    })();
-  }, [userId]);
+    },
+    [userId]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      syncStepsFromPedometer();
+    }, [syncStepsFromPedometer])
+  );
 
   // Refetch on every tab focus (silent — no full-screen spinner), not just
   // mount. loadData's own Promise.all already covers unread-count and
@@ -1439,22 +1463,42 @@ export default function HomeScreen() {
               </View>
 
               <FieldLabel>Steps</FieldLabel>
-              <TextInput
-                ref={stepsInputRef}
-                style={[styles.input, submitSuccess && styles.inputSaved]}
-                value={steps}
-                editable={!submitSuccess}
-                onChangeText={(v) => {
-                  setSteps(v);
-                  dirtyFieldsRef.current.steps = true;
-                  setSubmitSuccess(false);
-                  markManualOverrideToday(getTodayISO());
-                }}
-                placeholder="e.g. 8000"
-                placeholderTextColor={T.muted}
-                keyboardType="numeric"
-                returnKeyType="next"
-              />
+              <View style={styles.weightRow}>
+                <TextInput
+                  ref={stepsInputRef}
+                  style={[styles.input, styles.weightInput, submitSuccess && styles.inputSaved]}
+                  value={steps}
+                  editable={!submitSuccess}
+                  onChangeText={(v) => {
+                    setSteps(v);
+                    dirtyFieldsRef.current.steps = true;
+                    setSubmitSuccess(false);
+                    markManualOverrideToday(getTodayISO());
+                  }}
+                  placeholder="e.g. 8000"
+                  placeholderTextColor={T.muted}
+                  keyboardType="numeric"
+                  returnKeyType="next"
+                />
+                <TouchableOpacity
+                  style={styles.weightCameraButton}
+                  onPress={() => syncStepsFromPedometer(true)}
+                  disabled={stepsSyncBusy || submitSuccess}
+                  accessibilityRole="button"
+                  accessibilityLabel="Refresh steps from device"
+                >
+                  {stepsSyncBusy ? (
+                    <ActivityIndicator size="small" color={T.primary} />
+                  ) : (
+                    <Ionicons name="refresh" size={20} color={T.primary} />
+                  )}
+                </TouchableOpacity>
+              </View>
+              {stepsSyncUnavailable && (
+                <Text style={styles.manualFallbackHint}>
+                  Step tracking isn't available on this device — enter steps manually.
+                </Text>
+              )}
 
               <FieldLabel>Weight (kg)</FieldLabel>
               <View style={styles.weightRow}>
