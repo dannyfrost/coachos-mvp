@@ -40,6 +40,7 @@ import {
   initialsOf,
   inputStyle,
   cardShadow,
+  translucentCardShadow,
   screenBackground,
   screenWashColors,
   StatusWord,
@@ -1163,7 +1164,7 @@ export default function HomeScreen() {
         style={StyleSheet.absoluteFill}
       />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1, backgroundColor: 'transparent' }}
       >
       <ScrollView
@@ -1905,7 +1906,8 @@ const styles = StyleSheet.create({
   },
   // coachCard stays a TouchableOpacity (not wrapped in the Card component,
   // which renders a View) so it matches Card's exact recipe by hand: 24px
-  // radius, translucent white fill, translucent white border, cardShadow.
+  // radius, translucent white fill, translucent white border,
+  // translucentCardShadow (no elevation on Android — see design-system.tsx).
   // The navy left-accent border is layered on top of that base border.
   coachCard: {
     backgroundColor: 'rgba(255,255,255,0.72)',
@@ -1919,7 +1921,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 12,
     marginBottom: 14,
-    ...cardShadow,
+    ...translucentCardShadow,
   },
   coachCardContent: {
     flex: 1,

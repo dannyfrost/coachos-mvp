@@ -10,7 +10,7 @@ import {
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { T, fontFamily, cardShadow } from '../../lib/design-system';
+import { T, fontFamily, translucentCardShadow } from '../../lib/design-system';
 
 type CustomTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
 
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 10,
     zIndex: 20,
-    ...cardShadow,
+    ...translucentCardShadow,
   },
   tabsRow: {
     flexDirection: 'row',

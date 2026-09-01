@@ -70,6 +70,23 @@ export const cardShadow = Platform.select({
   default: {},
 });
 
+// Card's own shadow: no `elevation` on Android. Android's native elevation
+// shadow draws beneath the view's alpha-blended pixels, so combined with
+// Card's translucent (rgba) fill it reads as a muddy gray halo rather than
+// a clean shadow — a real Android-only rendering artifact, not something
+// opacity tuning fixes. iOS's shadow renders as an external drop shadow and
+// doesn't have this problem. The card's existing 1px border still defines
+// its edge on Android without elevation.
+export const translucentCardShadow = Platform.select({
+  ios: {
+    shadowColor: '#191c1e',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+  },
+  default: {},
+});
+
 export const inputStyle: TextStyle = {
   backgroundColor: T.surfaceLow,
   borderWidth: 0,
@@ -327,7 +344,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
-    ...cardShadow,
+    ...translucentCardShadow,
   },
   btnWrapper: {
     borderRadius: 8,
