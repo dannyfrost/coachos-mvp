@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
-import { T, shadow, font, Card, Badge, Btn } from '../../../../lib/design-system'
+import { T, font, Card, StatusWord, Btn } from '../../../../lib/design-system'
 
 type Level = '24h' | '48h' | '72h'
 type Action = 'pending' | 'message_sent' | 'escalated_to_coach' | 'resolved'
@@ -63,7 +63,7 @@ export default function AlertsClient({ events: initialEvents }: { events: AlertR
 
   const selectStyle: React.CSSProperties = {
     padding: '8px 14px',
-    borderRadius: 8,
+    borderRadius: 2,
     border: 'none',
     cursor: 'pointer',
     fontFamily: font.body,
@@ -71,7 +71,6 @@ export default function AlertsClient({ events: initialEvents }: { events: AlertR
     fontWeight: 600,
     background: T.white,
     color: T.onSurfaceVar,
-    boxShadow: shadow.card,
   }
 
   return (
@@ -110,8 +109,8 @@ export default function AlertsClient({ events: initialEvents }: { events: AlertR
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <span style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 15, color: T.onSurface }}>{e.client_name}</span>
-                    <Badge status={e.level === '72h' ? 'red' : e.level === '48h' ? 'yellow' : 'pending'} small labelOverride={e.level} />
-                    <Badge status={e.action_taken} small labelOverride={e.action_taken.replace('_', ' ')} />
+                    <StatusWord status={e.level === '72h' ? 'red' : e.level === '48h' ? 'yellow' : 'pending'} labelOverride={e.level} />
+                    <StatusWord status={e.action_taken} labelOverride={e.action_taken.replace('_', ' ')} />
                     {urgent && <span style={{ fontSize: 11, fontWeight: 700, color: T.red }}>URGENT</span>}
                   </div>
                   <span style={{ fontSize: 12, color: T.muted }}>Triggered {fmtDate(e.trigger_date)}</span>
