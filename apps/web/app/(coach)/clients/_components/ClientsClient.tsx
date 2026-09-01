@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
-import { T, shadow, font, Card, Badge, FlashDot, Btn, FieldLabel, inputStyle } from '../../../../lib/design-system'
+import { T, font, Card, Badge, StatusWord, FlashDot, Btn, FieldLabel, inputStyle } from '../../../../lib/design-system'
 
 type UserStatus = 'pending' | 'active' | 'paused' | 'suspended' | 'banned' | 'deactivated'
 type FlashStatus = 'green' | 'yellow' | 'red'
@@ -28,6 +28,7 @@ export interface ClientRow {
     start_date: string | null
   }
   expiringSoon?: boolean
+  assistantName: string | null
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -96,7 +97,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
         padding: 16,
       }}
     >
-      <div style={{ background: T.white, borderRadius: 14, boxShadow: shadow.float, width: '100%', maxWidth: 420, padding: 24 }}>
+      <div style={{ background: T.white, borderRadius: 2, width: '100%', maxWidth: 420, padding: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Invite Client</h2>
           <button
@@ -217,7 +218,7 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
 
   const selectStyle: React.CSSProperties = {
     padding: '8px 14px',
-    borderRadius: 8,
+    borderRadius: 2,
     border: 'none',
     cursor: 'pointer',
     fontFamily: font.body,
@@ -225,7 +226,6 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
     fontWeight: 600,
     background: T.white,
     color: T.onSurfaceVar,
-    boxShadow: shadow.card,
   }
 
   return (
@@ -237,9 +237,8 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
             alignItems: 'center',
             gap: 8,
             background: T.white,
-            borderRadius: 8,
+            borderRadius: 2,
             padding: '8px 14px',
-            boxShadow: shadow.card,
             flex: 1,
             maxWidth: 320,
           }}
@@ -284,14 +283,14 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '2fr 1fr 80px 1fr 1fr 170px',
-            minWidth: 780,
+            gridTemplateColumns: '2fr 1fr 1fr 80px 1fr 1fr 170px',
+            minWidth: 900,
             padding: '10px 20px',
             background: T.surfaceLow,
             borderBottom: `1px solid ${T.border}`,
           }}
         >
-          {['Client', 'Status', 'Flash', 'Last Log', 'Subscription', 'Actions'].map(h => (
+          {['Client', 'Status', 'Assistant', 'Flash', 'Last Log', 'Subscription', 'Actions'].map(h => (
             <span key={h} style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
               {h}
             </span>
@@ -310,8 +309,8 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
                 key={c.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 80px 1fr 1fr 170px',
-                  minWidth: 780,
+                  gridTemplateColumns: '2fr 1fr 1fr 80px 1fr 1fr 170px',
+                  minWidth: 900,
                   padding: '13px 20px',
                   borderBottom: i < filtered.length - 1 ? `1px solid ${T.border}` : 'none',
                   alignItems: 'center',
@@ -321,7 +320,8 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
                   <div style={{ fontWeight: 600, fontSize: 14, color: T.onSurface }}>{pu.full_name}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{pu.email}</div>
                 </div>
-                <Badge status={status ?? pu.status} small />
+                <StatusWord status={status ?? pu.status} />
+                <span style={{ fontSize: 13, color: T.onSurface }}>{c.assistantName ?? '—'}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {c.flash ? <FlashDot status={c.flash.status} /> : <FlashDot status="—" />}
                   <span style={{ fontSize: 11, color: T.muted }}>{c.flash?.status ?? '—'}</span>
@@ -330,7 +330,7 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
                 <div>
                   {c.subscription ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <Badge status={c.subscription.status} small />
+                      <StatusWord status={c.subscription.status} />
                       {c.expiringSoon && <Badge status="pending" small labelOverride="expiring soon" />}
                     </span>
                   ) : (

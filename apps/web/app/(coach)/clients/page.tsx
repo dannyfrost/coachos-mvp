@@ -28,17 +28,21 @@ export default async function ClientsPage() {
   const clients = rawClients ?? [];
   const clientIds = clients.map((c) => c.id);
 
-  const [subsResult, flashResult] = await Promise.all([
+  const [subsResult, flashResult, staffResult] = await Promise.all([
     clientIds.length > 0
       ? supabase.from('client_subscriptions').select('*').in('client_id', clientIds)
       : Promise.resolve({ data: [], error: null }),
     clientIds.length > 0
       ? supabase.from('flash_cards').select('id, client_id, status, last_log_at, computed_at').in('client_id', clientIds)
       : Promise.resolve({ data: [], error: null }),
+    clientIds.length > 0
+      ? supabase.from('client_staff_assignments').select('client_id, platform_users!client_staff_assignments_staff_id_fkey(full_name)').in('client_id', clientIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const allSubs = subsResult.data ?? [];
   const allFlash = flashResult.data ?? [];
+  const allStaff = staffResult.data ?? [];
 
   const sortedSubs = [...allSubs].sort((a, b) =>
     (b.start_date ?? '').localeCompare(a.start_date ?? '')
@@ -55,6 +59,14 @@ export default async function ClientsPage() {
     const existing = flashByClient.get(fc.client_id);
     if (!existing || (fc.computed_at ?? '') > (existing.computed_at ?? '')) {
       flashByClient.set(fc.client_id, fc);
+    }
+  }
+
+  const staffByClient = new Map<string, string>();
+  for (const sa of allStaff) {
+    const staffName = (sa.platform_users as { full_name: string } | null)?.full_name;
+    if (staffName && !staffByClient.has(sa.client_id)) {
+      staffByClient.set(sa.client_id, staffName);
     }
   }
 
@@ -84,6 +96,7 @@ export default async function ClientsPage() {
         ? { status: sub.status as NonNullable<ClientRow['subscription']>['status'], end_date: sub.end_date, start_date: sub.start_date }
         : undefined,
       expiringSoon,
+      assistantName: staffByClient.get(c.id) ?? null,
     };
   });
 
