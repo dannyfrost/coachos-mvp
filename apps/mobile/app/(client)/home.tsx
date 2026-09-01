@@ -12,9 +12,10 @@ import {
   StyleSheet,
   Image,
   Animated,
-  BackHandler,
   LayoutAnimation,
   UIManager,
+  ActionSheetIOS,
+  Alert,
 } from 'react-native';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -39,7 +40,20 @@ import {
   initialsOf,
   inputStyle,
   cardShadow,
+  translucentCardShadow,
+  screenBackground,
+  screenWashColors,
+  StatusWord,
+  TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
+import {
+  MEAL_CAP,
+  MEAL_KCAL,
+  MEAL_TYPE_ORDER,
+  MealType,
+  computeKcalLeft,
+  sittingSliceState,
+} from '../../lib/mealBudget';
 import {
   Chip,
   IconFlame,
@@ -70,17 +84,15 @@ import {
 } from '../../lib/weightOcrState';
 import CompletionRing from '../../components/CompletionRing';
 
-type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
-
-const MEAL_OPTIONS: { type: MealType; label: string }[] = [
-  { type: 'breakfast', label: 'Breakfast' },
-  { type: 'lunch', label: 'Lunch' },
-  { type: 'dinner', label: 'Dinner' },
-  { type: 'snack', label: 'Snack' },
-];
+const MEAL_OPTIONS = MEAL_TYPE_ORDER;
 
 type MealEntryState = {
   description: string;
+  // Server-confirmed description, set only from loadData's meal_entries
+  // query and after a successful save — never on keystrokes. loggedMealTypes
+  // below is derived from this, not `description`, so a sitting's slice only
+  // fills (and kcal-left only drops) once the save actually persists.
+  savedDescription: string;
   photoUri: string | null;
   photoKey: string | null;
   existingPhotoKey: string | null;
@@ -118,37 +130,29 @@ type TodayLogArgs = {
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 
-function getBanner(
+// Maps account/subscription status onto a single StatusWord key (see
+// lib/design-system.tsx's BADGE_MAP). Spec: "Status = one underlined word
+// under the date. No paragraph banner." — 'green' (label "On Track") is the
+// default healthy state; problem states take priority over it. Returns null
+// while userStatus hasn't loaded yet (or failed to load) — callers must
+// render nothing rather than pass null into StatusWord, since "On Track" is
+// a specific, potentially wrong claim, not a safe default for "unknown".
+function getStatusKey(
   userStatus: UserStatus | null,
   subStatus: SubStatus | null,
-): { text: string; bg: string; color: string } | null {
+): string | null {
   if (!userStatus) return null;
-  if (userStatus === 'paused') {
-    return {
-      text: 'Your account is paused. Contact your coach to resume.',
-      bg: T.amberBg,
-      color: T.amber,
-    };
-  }
+  if (userStatus === 'paused') return 'paused';
   if (
     userStatus === 'deactivated' ||
     userStatus === 'suspended' ||
     userStatus === 'banned'
   ) {
-    return {
-      text: 'Your account is not active. Contact your coach.',
-      bg: T.redBg,
-      color: T.red,
-    };
+    return userStatus;
   }
-  if (subStatus === 'expired' || subStatus === 'overdue') {
-    return {
-      text: 'Your subscription has expired. Contact your coach.',
-      bg: T.redBg,
-      color: T.red,
-    };
-  }
-  return null;
+  if (userStatus === 'pending') return 'pending';
+  if (subStatus === 'expired' || subStatus === 'overdue') return subStatus;
+  return 'green';
 }
 
 function isSubmitBlocked(
@@ -200,6 +204,8 @@ export default function HomeScreen() {
 
   const [weightOcrState, setWeightOcrState] = useState(initialWeightOcrState);
   const [weightOcrBusy, setWeightOcrBusy] = useState(false);
+  const [stepsSyncBusy, setStepsSyncBusy] = useState(false);
+  const [stepsSyncUnavailable, setStepsSyncUnavailable] = useState(false);
 
   // Meal state for Today's Log quick-add
   const [selectedMealType, setSelectedMealType] = useState<MealType | null>(null);
@@ -207,33 +213,12 @@ export default function HomeScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoKey, setPhotoKey] = useState<string | null>(null);
   const [existingPhotoKey, setExistingPhotoKey] = useState<string | null>(null);
-  const [pickerModalVisible, setPickerModalVisible] = useState(false);
-  const [pendingMealType, setPendingMealType] = useState<MealType | null>(null);
-  const pickerOverlayAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!pickerModalVisible) {
-      pickerOverlayAnim.setValue(0);
-      return;
-    }
-    Animated.timing(pickerOverlayAnim, {
-      toValue: 1,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setPickerModalVisible(false);
-      return true;
-    });
-    return () => sub.remove();
-  }, [pickerModalVisible, pickerOverlayAnim]);
 
   const [mealEntries, setMealEntries] = useState<Record<MealType, MealEntryState>>({
-    breakfast: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-    lunch: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-    dinner: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-    snack: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    breakfast: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    lunch: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    dinner: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+    snack: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
   });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -259,6 +244,30 @@ export default function HomeScreen() {
   const weightInputRef = useRef<TextInput>(null);
   const mealInputRef = useRef<TextInput>(null);
   const questionsInputRef = useRef<TextInput>(null);
+
+  // Per-field "dirty since last load" tracker. loadData() now fires silently
+  // on every tab focus (not just mount), so it must not clobber a field the
+  // user is actively mid-edit on. Set true in each field's onChangeText;
+  // reset to false once loadData applies a fresh value cleanly (i.e. it
+  // wasn't dirty at that moment) and after a successful submit, since the
+  // submitted value becomes the new server-agreed baseline.
+  const dirtyFieldsRef = useRef({ steps: false, weight: false, questions: false });
+
+  // Per-meal-type "description dirty since last load" tracker — same
+  // rationale as dirtyFieldsRef above, but keyed by meal type since
+  // mealEntries is a per-meal-type record rather than a single field.
+  // Set true in the meal description TextInput's onChangeText (for
+  // whichever meal type is currently selected); cleared after a
+  // successful save for that meal type. loadData()'s silent refetch must
+  // not clobber a meal type's live-edited `description` while it merges
+  // in fresh savedDescription/photoKey/existingPhotoKey for that same
+  // meal type.
+  const dirtyMealDescriptionRef = useRef<Record<MealType, boolean>>({
+    breakfast: false,
+    lunch: false,
+    dinner: false,
+    snack: false,
+  });
 
   const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -390,9 +399,18 @@ export default function HomeScreen() {
       setStreak(computedStreak);
 
       if (todayRow) {
-        setSteps(todayRow.steps !== null ? String(todayRow.steps) : '');
-        setWeight(todayRow.weight !== null ? todayRow.weight.toFixed(1) : '');
-        setQuestions(todayRow.questions ?? '');
+        // Skip overwriting any field the user is actively mid-edit on (see
+        // dirtyFieldsRef above) — this silent load fires on every tab focus,
+        // and a background refetch must never discard an unsaved keystroke.
+        if (!dirtyFieldsRef.current.steps) {
+          setSteps(todayRow.steps !== null ? String(todayRow.steps) : '');
+        }
+        if (!dirtyFieldsRef.current.weight) {
+          setWeight(todayRow.weight !== null ? todayRow.weight.toFixed(1) : '');
+        }
+        if (!dirtyFieldsRef.current.questions) {
+          setQuestions(todayRow.questions ?? '');
+        }
       }
 
       if (puResult.data) {
@@ -425,23 +443,39 @@ export default function HomeScreen() {
 
       if (mealsResult.data) {
         const loadedMap: Record<MealType, MealEntryState> = {
-          breakfast: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-          lunch: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-          dinner: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
-          snack: { description: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          breakfast: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          lunch: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          dinner: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
+          snack: { description: '', savedDescription: '', photoUri: null, photoKey: null, existingPhotoKey: null },
         };
         for (const row of mealsResult.data) {
           const mType = row.meal_type as MealType;
           if (loadedMap[mType]) {
             loadedMap[mType] = {
               description: row.description ?? '',
+              savedDescription: row.description ?? '',
               photoUri: null,
               photoKey: row.photo_key ?? null,
               existingPhotoKey: row.photo_key ?? null,
             };
           }
         }
-        setMealEntries(loadedMap);
+        // Skip overwriting `description` for any meal type the user is
+        // actively mid-edit on (see dirtyMealDescriptionRef above) — but
+        // still adopt the freshly loaded savedDescription/photoKey/
+        // existingPhotoKey for that meal type, same as a clean load.
+        setMealEntries((prev) => {
+          const merged = { ...loadedMap };
+          for (const mType of Object.keys(merged) as MealType[]) {
+            if (dirtyMealDescriptionRef.current[mType]) {
+              merged[mType] = {
+                ...merged[mType],
+                description: prev[mType].description,
+              };
+            }
+          }
+          return merged;
+        });
       }
     } catch {
       setFetchError(true);
@@ -457,19 +491,24 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const stepsSyncRanRef = useRef(false);
-  useEffect(() => {
-    if (!userId || stepsSyncRanRef.current) return;
-    stepsSyncRanRef.current = true;
-
-    (async () => {
+  // Reads the device's live step count and, if there's a newer reading,
+  // syncs it into the Steps field + server. Runs automatically on every
+  // tab focus (see useFocusEffect below), not just once per app session —
+  // a one-shot mount-only version of this used to leave the KPI frozen at
+  // whatever it read the very first time, for the entire app session, with
+  // no way to force a fresh read. `manual` marks a user-triggered refresh
+  // (drives the small refresh button's spinner and its "unavailable" hint).
+  const syncStepsFromPedometer = useCallback(
+    async (manual = false) => {
+      if (!userId) return;
+      if (manual) setStepsSyncBusy(true);
       try {
         const available = await isPedometerAvailable();
-        if (!available) return;
+        if (!available) {
+          if (manual) setStepsSyncUnavailable(true);
+          return;
+        }
+        if (manual) setStepsSyncUnavailable(false);
 
         let granted = await hasStepsPermission();
         if (!granted) {
@@ -483,10 +522,14 @@ export default function HomeScreen() {
         const decision = decideStepsSync(today, overrideActive, result);
 
         if (__DEV__) {
-          console.log('[stepsForegroundSync]', { today, result, overrideActive, decision });
+          console.log('[stepsForegroundSync]', { today, result, overrideActive, decision, manual });
         }
 
-        if (decision.action === 'update') {
+        // decideStepsSync already skips when the user has a manual
+        // override active today (set on every Steps keystroke below), but
+        // guard on dirtyFieldsRef too for the same reason loadData does —
+        // belt-and-suspenders against clobbering an in-progress edit.
+        if (decision.action === 'update' && !dirtyFieldsRef.current.steps) {
           setSteps(String(decision.value));
           setSubmitSuccess(false);
           const supabase = createMobileSupabaseClient();
@@ -504,52 +547,29 @@ export default function HomeScreen() {
           console.log('[stepsForegroundSync] unexpected error', err);
         }
         // Never let steps auto-sync crash or block the Daily Log.
+      } finally {
+        if (manual) setStepsSyncBusy(false);
       }
-    })();
-  }, [userId]);
+    },
+    [userId]
+  );
 
   useFocusEffect(
     useCallback(() => {
-      let isMounted = true;
-      (async () => {
-        try {
-          const supabase = createMobileSupabaseClient();
-          const {
-            data: { session: sess },
-          } = await supabase.auth.getSession();
-          if (!sess?.user?.id || !isMounted) return;
+      syncStepsFromPedometer();
+    }, [syncStepsFromPedometer])
+  );
 
-          const [{ count }, { data: latestMsg }] = await Promise.all([
-            supabase
-              .from('messages')
-              .select('*', { count: 'exact', head: true })
-              .eq('recipient_id', sess.user.id)
-              .is('read_at', null),
-            supabase
-              .from('messages')
-              .select('id, content, sender_id, recipient_id, created_at, read_at')
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle(),
-          ]);
-
-          if (isMounted) {
-            if (typeof count === 'number') {
-              setUnreadCount(count);
-            }
-            if (latestMsg) {
-              setLatestMessage(latestMsg as MessagePreview);
-            }
-          }
-        } catch {
-          // Silently ignore background badge refresh errors
-        }
-      })();
-
-      return () => {
-        isMounted = false;
-      };
-    }, [])
+  // Refetch on every tab focus (silent — no full-screen spinner), not just
+  // mount. loadData's own Promise.all already covers unread-count and
+  // latest-message (what this effect used to fetch by hand) *and*
+  // meal_entries/daily_logs, so switching between Home and Meals never shows
+  // stale data — including the kcal-left hero number, which must agree
+  // between tabs. Same pattern as report.tsx's silent focus-refetch.
+  useFocusEffect(
+    useCallback(() => {
+      loadData({ silent: true });
+    }, [loadData])
   );
 
   const runWeightOcr = async (photoUri: string) => {
@@ -606,6 +626,27 @@ export default function HomeScreen() {
 
     if (result.canceled || !result.assets[0]) return;
     await runWeightOcr(result.assets[0].uri);
+  };
+
+  // Single "From photo" entry point (spec: one quiet control, no visible
+  // Camera / Gallery pair). Offers both existing capture paths via an action
+  // sheet; handleWeightCameraPress / handleWeightGalleryPress are unchanged.
+  const handleFromPhotoPress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Take Photo', 'Choose from Library', 'Cancel'], cancelButtonIndex: 2 },
+        (index) => {
+          if (index === 0) handleWeightCameraPress();
+          if (index === 1) handleWeightGalleryPress();
+        }
+      );
+    } else {
+      Alert.alert('From photo', undefined, [
+        { text: 'Take Photo', onPress: handleWeightCameraPress },
+        { text: 'Choose from Library', onPress: handleWeightGalleryPress },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
   };
 
   const handleMealTypeChange = (type: MealType | null) => {
@@ -834,6 +875,12 @@ export default function HomeScreen() {
       const { error: rpcError } = await supabase.rpc('update_today_log', args);
       if (!rpcError) {
         dailyLogSuccess = true;
+        // Submitted values become the new server-agreed baseline — clear
+        // dirty flags so the next silent loadData() can sync these fields
+        // again (e.g. if edited from another device).
+        dirtyFieldsRef.current.steps = false;
+        dirtyFieldsRef.current.weight = false;
+        dirtyFieldsRef.current.questions = false;
         setTodayLog((prev) => ({
           ...(prev ?? {
             client_id: userId ?? '',
@@ -871,6 +918,11 @@ export default function HomeScreen() {
 
         if (!upsertError) {
           mealSuccess = true;
+          // Submitted description becomes the new server-agreed baseline
+          // for this meal type — clear its dirty flag so the next silent
+          // loadData() can sync it again (e.g. if edited from another
+          // device), mirroring dirtyFieldsRef's clear-on-submit above.
+          dirtyMealDescriptionRef.current[selectedMealType] = false;
           setPhotoKey(finalPhotoKey);
           setExistingPhotoKey(finalPhotoKey);
           setPhotoUri(null);
@@ -878,6 +930,7 @@ export default function HomeScreen() {
             ...prev,
             [selectedMealType]: {
               description: mealDescription.trim(),
+              savedDescription: mealDescription.trim(),
               photoUri: null,
               photoKey: finalPhotoKey,
               existingPhotoKey: finalPhotoKey,
@@ -929,6 +982,25 @@ export default function HomeScreen() {
     (todayLog?.weight ?? null) !== null || (weight.trim().length > 0 && submitSuccess);
   const stepsDone =
     (todayLog?.steps ?? null) !== null || (steps.trim().length > 0 && submitSuccess);
+
+  // Which sittings are actually logged today, for the meal-budget hero + slices.
+  // `mealEntries` is server-confirmed data loaded from the `meal_entries` table
+  // (loadData's mealsResult query, keyed by today's log_date) and kept in sync
+  // locally after every successful save — it is NOT separate local/ephemeral
+  // state. Deriving loggedMealTypes from it (rather than a fresh useState, as
+  // the brief's illustrative snippet suggested) keeps this screen and the
+  // Meals tab (Task 4) reading the same underlying source of truth, since both
+  // screens query the same table. Filtering on `savedDescription` (set only
+  // on load / after a successful save, never on keystrokes — see
+  // MealEntryState) rather than the live-edited `description` field means a
+  // slice only fills — and kcal-left only drops — once a save actually
+  // persists, matching spec: "Saving or submitting a sitting fills that
+  // slice. Selected-but-not-logged sitting is outlined."
+  const loggedMealTypes: MealType[] = (Object.keys(mealEntries) as MealType[]).filter(
+    (t) => mealEntries[t].savedDescription.trim().length > 0
+  );
+  const kcalLeft = computeKcalLeft(loggedMealTypes);
+
   const mealsDone =
     Object.values(mealEntries).some((m) => m.description.trim().length > 0) ||
     (mealDescription.trim().length > 0 && submitSuccess);
@@ -998,23 +1070,25 @@ export default function HomeScreen() {
         handlePickPhoto();
       },
     },
+    {
+      id: 'questions',
+      label: 'Coach Questions',
+      iconKey: 'chat',
+      done: (todayLog?.questions ?? null) !== null || (questions.trim().length > 0 && submitSuccess),
+      optional: false,
+      chipBg: '#ede9fe',
+      chipColor: '#6d28d9',
+      onTap: () => {
+        questionsInputRef.current?.focus();
+      },
+    },
   ];
 
   const doneCount = tasks.filter((t) => t.done).length;
   const allTasksDone = doneCount === tasks.length;
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const hasUserToggledRef = useRef(false);
-  const initialCollapseSetRef = useRef(false);
-
-  useEffect(() => {
-    if (!loading && !initialCollapseSetRef.current) {
-      initialCollapseSetRef.current = true;
-      if (!hasUserToggledRef.current && allTasksDone) {
-        setCollapsed(true);
-      }
-    }
-  }, [loading, allTasksDone]);
 
   const toggleCollapsed = () => {
     hasUserToggledRef.current = true;
@@ -1078,14 +1152,21 @@ export default function HomeScreen() {
     }
   }
 
-  const banner = getBanner(userStatus, subStatus);
+  const statusKey = getStatusKey(userStatus, subStatus);
   const blocked = isSubmitBlocked(userStatus, subStatus);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: T.surface }}
-    >
+    <View style={screenBackground}>
+      <LinearGradient
+        colors={screenWashColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+      >
       <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.container}
@@ -1105,6 +1186,9 @@ export default function HomeScreen() {
             <Text style={styles.greetingSub}>{greetingText}</Text>
             <Text style={styles.greetingName}>{clientFirstName}</Text>
             <Text style={styles.greetingDate}>{todayFormattedDate}</Text>
+            {statusKey !== null && (
+              <StatusWord status={statusKey} style={styles.statusWord} />
+            )}
           </View>
           <View style={styles.greetingRight}>
             <TouchableOpacity
@@ -1146,14 +1230,6 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {banner && (
-          <View style={[styles.statusBanner, { backgroundColor: banner.bg }]}>
-            <Text style={[styles.statusBannerText, { color: banner.color }]}>
-              {banner.text}
-            </Text>
-          </View>
-        )}
-
         {loading ? (
           <ActivityIndicator
             size="large"
@@ -1187,7 +1263,7 @@ export default function HomeScreen() {
             )}
 
             {/* ── Today's Tasks Checklist + Completion Ring ── */}
-            <View style={styles.tasksCard}>
+            <Card style={styles.tasksCard}>
               <TouchableOpacity
                 onPress={toggleCollapsed}
                 activeOpacity={0.7}
@@ -1282,12 +1358,12 @@ export default function HomeScreen() {
                   ))}
                 </View>
               )}
-            </View>
+            </Card>
 
             {/* ── Stats Row (Weight & Steps) ── */}
             <View style={styles.statsGrid}>
               {/* Weight Stat Card */}
-              <View style={styles.statCard}>
+              <Card style={styles.statCard}>
                 <View style={styles.statCardHeader}>
                   <Text style={styles.statLabel}>WEIGHT</Text>
                   <Chip
@@ -1322,10 +1398,10 @@ export default function HomeScreen() {
                 >
                   {weightDeltaText}
                 </Text>
-              </View>
+              </Card>
 
               {/* Steps Stat Card */}
-              <View style={styles.statCard}>
+              <Card style={styles.statCard}>
                 <View style={styles.statCardHeader}>
                   <Text style={styles.statLabel}>STEPS</Text>
                   <Chip
@@ -1360,16 +1436,21 @@ export default function HomeScreen() {
                 >
                   {stepsDeltaText}
                 </Text>
-              </View>
+              </Card>
             </View>
 
-            {/* ── Daily Log Entry Form Cards ── */}
-            <SectionLabel style={styles.formSectionLabel}>
-              DAILY LOG
-            </SectionLabel>
+            {/* ── One panel titled "Today": Steps+Weight, Weight OCR,
+                Meal budget/slices, Questions — one Card, light dividers
+                between subsections instead of separate card boundaries. ── */}
+            <Card style={styles.todayPanel}>
+              <Text style={styles.todayPanelTitle}>Today</Text>
 
-            {/* Body Metrics Card */}
-            <Card style={styles.formCard}>
+              {/* Subsection 1+2: Steps + Weight, with the Weight-OCR
+                  "From photo" control and its feedback (from-photo tag,
+                  retake banner, manual-fallback hint) inline on the
+                  weight field they belong to — COACHOS.md items 1 and 2
+                  describe these as one flowing block, not two card zones. */}
+              <View style={styles.panelSubsection}>
               <View style={styles.formCardHeader}>
                 <Chip
                   iconKey="scale"
@@ -1379,33 +1460,62 @@ export default function HomeScreen() {
                   chipSize={26}
                   radius={7}
                 />
-                <Text style={styles.formCardTitle}>BODY METRICS</Text>
+                <Text style={styles.formCardTitle}>STEPS &amp; WEIGHT</Text>
               </View>
 
               <FieldLabel>Steps</FieldLabel>
-              <TextInput
-                ref={stepsInputRef}
-                style={styles.input}
-                value={steps}
-                onChangeText={(v) => {
-                  setSteps(v);
-                  setSubmitSuccess(false);
-                  markManualOverrideToday(getTodayISO());
-                }}
-                placeholder="e.g. 8000"
-                placeholderTextColor={T.muted}
-                keyboardType="numeric"
-                returnKeyType="next"
-              />
+              <View style={styles.weightRow}>
+                <TextInput
+                  ref={stepsInputRef}
+                  style={[styles.input, styles.weightInput, submitSuccess && styles.inputSaved]}
+                  value={steps}
+                  editable={!submitSuccess}
+                  onChangeText={(v) => {
+                    setSteps(v);
+                    dirtyFieldsRef.current.steps = true;
+                    setSubmitSuccess(false);
+                    markManualOverrideToday(getTodayISO());
+                  }}
+                  placeholder="e.g. 8000"
+                  placeholderTextColor={T.muted}
+                  keyboardType="numeric"
+                  returnKeyType="next"
+                />
+                <TouchableOpacity
+                  style={styles.weightCameraButton}
+                  onPress={() => syncStepsFromPedometer(true)}
+                  disabled={stepsSyncBusy || submitSuccess}
+                  accessibilityRole="button"
+                  accessibilityLabel="Refresh steps from device"
+                >
+                  {stepsSyncBusy ? (
+                    <ActivityIndicator size="small" color={T.primary} />
+                  ) : (
+                    <Ionicons name="refresh" size={20} color={T.primary} />
+                  )}
+                </TouchableOpacity>
+              </View>
+              {stepsSyncUnavailable && (
+                <Text style={styles.manualFallbackHint}>
+                  Step tracking isn't available on this device — enter steps manually.
+                </Text>
+              )}
 
               <FieldLabel>Weight (kg)</FieldLabel>
               <View style={styles.weightRow}>
                 <TextInput
                   ref={weightInputRef}
-                  style={[styles.input, styles.weightInput, { marginBottom: 0 }]}
+                  style={[
+                    styles.input,
+                    styles.weightInput,
+                    { marginBottom: 0 },
+                    submitSuccess && styles.inputSaved,
+                  ]}
                   value={weight}
+                  editable={!submitSuccess}
                   onChangeText={(v) => {
                     setWeight(v);
+                    dirtyFieldsRef.current.weight = true;
                     setSubmitSuccess(false);
                     setWeightOcrState((s) => ({ ...s, suggestedValue: null }));
                   }}
@@ -1416,25 +1526,16 @@ export default function HomeScreen() {
                 />
                 <TouchableOpacity
                   style={styles.weightCameraButton}
-                  onPress={handleWeightCameraPress}
-                  disabled={weightOcrBusy}
+                  onPress={handleFromPhotoPress}
+                  disabled={weightOcrBusy || submitSuccess}
                   accessibilityRole="button"
-                  accessibilityLabel="Scan weight from a photo"
+                  accessibilityLabel="Log weight from a photo"
                 >
                   {weightOcrBusy ? (
                     <ActivityIndicator size="small" color={T.primary} />
                   ) : (
                     <Ionicons name="camera" size={20} color={T.primary} />
                   )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.weightCameraButton}
-                  onPress={handleWeightGalleryPress}
-                  disabled={weightOcrBusy}
-                  accessibilityRole="button"
-                  accessibilityLabel="Scan weight from a gallery photo"
-                >
-                  <Ionicons name="image" size={20} color={T.primary} />
                 </TouchableOpacity>
               </View>
 
@@ -1453,7 +1554,7 @@ export default function HomeScreen() {
                     Couldn't read the number — try again?
                   </Text>
                   <TouchableOpacity
-                    onPress={handleWeightCameraPress}
+                    onPress={handleFromPhotoPress}
                     accessibilityRole="button"
                     accessibilityLabel="Retake weight photo"
                   >
@@ -1467,10 +1568,12 @@ export default function HomeScreen() {
                   Photo saved — enter your weight below.
                 </Text>
               )}
-            </Card>
+              </View>
 
-            {/* Nutrition Card */}
-            <Card style={styles.formCard}>
+              <View style={styles.panelDivider} />
+
+              {/* Subsection 3: Meal */}
+              <View style={styles.panelSubsection}>
               <View style={styles.formCardHeader}>
                 <Chip
                   iconKey="utensils"
@@ -1480,48 +1583,95 @@ export default function HomeScreen() {
                   chipSize={26}
                   radius={7}
                 />
-                <Text style={styles.formCardTitle}>NUTRITION</Text>
+                <Text style={styles.formCardTitle}>MEAL</Text>
               </View>
 
-              <FieldLabel>Meal Type</FieldLabel>
-              <TouchableOpacity
-                style={styles.mealPickerTrigger}
-                onPress={() => {
-                  setPendingMealType(selectedMealType);
-                  setPickerModalVisible(true);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Select meal type"
-              >
-                <Text
+              {/* Meal limit is the hero — big kcal left + bar */}
+              <View style={styles.mealHeroRow}>
+                <Text style={styles.mealHeroNumber}>{kcalLeft}</Text>
+                <Text style={styles.mealHeroUnit}>kcal left</Text>
+              </View>
+              <View style={styles.mealHeroBarTrack}>
+                <View
                   style={[
-                    styles.mealPickerTriggerText,
-                    !selectedMealType && styles.placeholderText,
+                    styles.mealHeroBarFill,
+                    {
+                      width: `${Math.max(
+                        0,
+                        Math.min(100, (kcalLeft / MEAL_CAP) * 100)
+                      )}%`,
+                    },
                   ]}
-                >
-                  {selectedMealType
-                    ? MEAL_OPTIONS.find((o) => o.type === selectedMealType)?.label ??
-                      selectedMealType
-                    : 'Select a meal'}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color={T.onSurfaceVar} />
-              </TouchableOpacity>
+                />
+              </View>
 
-              <FieldLabel>Meal description</FieldLabel>
+              {/* The four sitting slices ARE the sitting selector — no
+                  separate "which sitting" picker. */}
+              <View style={styles.sittingSlicesRow}>
+                {MEAL_OPTIONS.map((opt) => {
+                  const sliceState = sittingSliceState(
+                    opt.type,
+                    selectedMealType,
+                    loggedMealTypes
+                  );
+                  return (
+                    <TouchableOpacity
+                      key={opt.type}
+                      style={[
+                        styles.sittingSlice,
+                        sliceState === 'selected' && styles.sittingSliceSelected,
+                        sliceState === 'filled' && styles.sittingSliceFilled,
+                      ]}
+                      onPress={() => handleMealTypeChange(opt.type)}
+                      disabled={submitSuccess}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${opt.label}, ${MEAL_KCAL[opt.type]} kcal, ${
+                        sliceState === 'filled'
+                          ? 'logged'
+                          : sliceState === 'selected'
+                          ? 'selected, not yet saved'
+                          : 'not logged'
+                      }`}
+                      accessibilityState={{ selected: sliceState !== 'empty' }}
+                    >
+                      <Text
+                        style={[
+                          styles.sittingSliceLabel,
+                          sliceState === 'filled' && styles.sittingSliceLabelFilled,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.sittingSliceKcal,
+                          sliceState === 'filled' && styles.sittingSliceKcalFilled,
+                        ]}
+                      >
+                        {MEAL_KCAL[opt.type]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <FieldLabel style={styles.quietFieldLabel}>Description</FieldLabel>
               <TextInput
                 ref={mealInputRef}
                 style={[
                   styles.input,
                   styles.multiline,
-                  mealDescription.trim().length > 0 &&
-                    !mealDescriptionFocused &&
+                  ((mealDescription.trim().length > 0 && !mealDescriptionFocused) ||
+                    submitSuccess) &&
                     styles.inputSaved,
                 ]}
                 value={mealDescription}
+                editable={!submitSuccess}
                 onChangeText={(v) => {
                   setMealDescription(v);
                   setSubmitSuccess(false);
                   if (selectedMealType) {
+                    dirtyMealDescriptionRef.current[selectedMealType] = true;
                     setMealEntries((prev) => ({
                       ...prev,
                       [selectedMealType]: {
@@ -1536,7 +1686,7 @@ export default function HomeScreen() {
                 placeholder={
                   selectedMealType
                     ? `What did you have for ${selectedMealType}?`
-                    : 'Describe your meal'
+                    : 'Tap a sitting above, then describe your meal'
                 }
                 placeholderTextColor={T.muted}
                 multiline
@@ -1545,7 +1695,7 @@ export default function HomeScreen() {
                 textAlignVertical="top"
               />
 
-              <FieldLabel>Meal photo</FieldLabel>
+              <FieldLabel style={styles.quietFieldLabel}>Photo (optional)</FieldLabel>
               {photoUri || existingPhotoKey ? (
                 <View style={[styles.photoRow, { marginBottom: 0 }]}>
                   {photoUri ? (
@@ -1562,6 +1712,7 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={styles.editPhotoButton}
                     onPress={handlePickPhoto}
+                    disabled={submitSuccess}
                     accessibilityRole="button"
                     accessibilityLabel="Edit meal photo"
                   >
@@ -1573,6 +1724,7 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={[styles.photoButton, { marginBottom: 0 }]}
                   onPress={handlePickPhoto}
+                  disabled={submitSuccess}
                 >
                   <Text style={styles.photoButtonText}>
                     {selectedMealType
@@ -1581,10 +1733,12 @@ export default function HomeScreen() {
                   </Text>
                 </TouchableOpacity>
               )}
-            </Card>
+              </View>
 
-            {/* Coach Note Card */}
-            <Card style={styles.formCard}>
+              <View style={styles.panelDivider} />
+
+              {/* Subsection 4: Questions */}
+              <View style={[styles.panelSubsection, styles.panelSubsectionLast]}>
               <View style={styles.formCardHeader}>
                 <Chip
                   iconKey="chat"
@@ -1594,16 +1748,23 @@ export default function HomeScreen() {
                   chipSize={26}
                   radius={7}
                 />
-                <Text style={styles.formCardTitle}>COACH NOTE</Text>
+                <Text style={styles.formCardTitle}>QUESTIONS</Text>
               </View>
 
               <FieldLabel>Questions for your coach</FieldLabel>
               <TextInput
                 ref={questionsInputRef}
-                style={[styles.input, styles.multiline, { marginBottom: 0 }]}
+                style={[
+                  styles.input,
+                  styles.multiline,
+                  { marginBottom: 0 },
+                  submitSuccess && styles.inputSaved,
+                ]}
                 value={questions}
+                editable={!submitSuccess}
                 onChangeText={(v) => {
                   setQuestions(v);
+                  dirtyFieldsRef.current.questions = true;
                   setSubmitSuccess(false);
                 }}
                 placeholder="Any questions or notes for your coach"
@@ -1613,6 +1774,7 @@ export default function HomeScreen() {
                 maxLength={2000}
                 textAlignVertical="top"
               />
+              </View>
             </Card>
 
             {submitError !== null && (
@@ -1621,15 +1783,19 @@ export default function HomeScreen() {
 
             <Btn
               variant="primary"
-              onPress={handleSubmit}
-              disabled={blocked || submitting}
-              accessibilityLabel="Submit daily log"
+              onPress={submitSuccess ? () => setSubmitSuccess(false) : handleSubmit}
+              disabled={submitting || (!submitSuccess && blocked)}
+              accessibilityLabel={
+                submitSuccess ? "Edit today's log" : "Submit today's log"
+              }
               style={styles.submitButton}
             >
               {submitting ? (
                 <ActivityIndicator color={T.white} />
+              ) : submitSuccess ? (
+                'Edit'
               ) : (
-                'Save Log'
+                "Submit today's log"
               )}
             </Btn>
 
@@ -1641,86 +1807,8 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
-
-      {pickerModalVisible && (
-        <Animated.View
-          style={[styles.modalOverlay, { opacity: pickerOverlayAnim }]}
-        >
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={() => setPickerModalVisible(false)}
-          />
-          <Animated.View
-            style={[
-              styles.modalSheet,
-              {
-                transform: [
-                  {
-                    translateY: pickerOverlayAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [40, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Meal Type</Text>
-              <TouchableOpacity
-                onPress={() => setPickerModalVisible(false)}
-                style={styles.modalCloseButton}
-                accessibilityRole="button"
-                accessibilityLabel="Close meal picker"
-              >
-                <Ionicons name="close" size={22} color={T.onSurfaceVar} />
-              </TouchableOpacity>
-            </View>
-
-            {MEAL_OPTIONS.map((opt) => {
-              const isSelected = pendingMealType === opt.type;
-              return (
-                <TouchableOpacity
-                  key={opt.type}
-                  style={[
-                    styles.mealOptionRow,
-                    isSelected && styles.mealOptionRowSelected,
-                  ]}
-                  onPress={() => setPendingMealType(opt.type)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                >
-                  <Text
-                    style={[
-                      styles.mealOptionText,
-                      isSelected && styles.mealOptionTextSelected,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                  {isSelected && (
-                    <Ionicons name="checkmark" size={20} color={T.primary} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-
-            <Btn
-              variant="primary"
-              onPress={() => {
-                handleMealTypeChange(pendingMealType);
-                setPickerModalVisible(false);
-              }}
-              accessibilityLabel="Confirm meal type selection"
-              style={styles.modalConfirmBtn}
-            >
-              Confirm
-            </Btn>
-          </Animated.View>
-        </Animated.View>
-      )}
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -1729,7 +1817,14 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
     paddingTop: 52,
-    backgroundColor: T.surface,
+    // Bottom padding clears the floating capsule tab bar (~64px tall,
+    // floated `insets.bottom + 16` above the screen edge — see
+    // (client)/_layout.tsx) plus breathing room for the largest expected
+    // safe-area inset.
+    paddingBottom: TAB_BAR_CLEARANCE,
+    // Transparent so the peach -> blue sky wash (screenWashColors, rendered
+    // behind this ScrollView) shows through around the frosted Cards.
+    backgroundColor: 'transparent',
   },
   greetingHeader: {
     marginHorizontal: -20,
@@ -1809,9 +1904,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 12,
   },
+  // coachCard stays a TouchableOpacity (not wrapped in the Card component,
+  // which renders a View) so it matches Card's exact recipe by hand: 24px
+  // radius, translucent white fill, translucent white border,
+  // translucentCardShadow (no elevation on Android — see design-system.tsx).
+  // The navy left-accent border is layered on top of that base border.
   coachCard: {
-    backgroundColor: T.white,
-    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
     padding: 14,
     borderLeftWidth: 3,
     borderLeftColor: T.primary,
@@ -1819,7 +1921,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 12,
     marginBottom: 14,
-    ...cardShadow,
+    ...translucentCardShadow,
   },
   coachCardContent: {
     flex: 1,
@@ -1848,12 +1950,13 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bodyRegular,
     lineHeight: 17,
   },
+  // tasksCard/statCard are now rendered through the <Card> primitive
+  // (lib/design-system.tsx) — these style objects only carry overrides
+  // (padding/margin/flex) layered on top of Card's own 24px radius,
+  // translucent fill, border, and shadow.
   tasksCard: {
-    backgroundColor: T.white,
-    borderRadius: 20,
     padding: 18,
     marginBottom: 12,
-    ...cardShadow,
   },
   tasksHeaderRow: {
     flexDirection: 'row',
@@ -1942,10 +2045,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: T.white,
-    borderRadius: 16,
     padding: 14,
-    ...cardShadow,
   },
   statCardHeader: {
     flexDirection: 'row',
@@ -1982,14 +2082,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
-  formSectionLabel: {
-    marginTop: 8,
-    marginBottom: 10,
-  },
-  formCard: {
-    borderRadius: 16,
-    padding: 16,
+  // Single "Today" panel (Card, unmodified 24px/frosted-fill/border from
+  // lib/design-system.tsx) wrapping Steps+Weight, Weight OCR, Meal, and
+  // Questions as light-divider-separated subsections instead of three
+  // separate Card boundaries. No radius/padding override here — letting
+  // Card's own 24px win is the point (see formCard finding).
+  todayPanel: {
     marginBottom: 12,
+  },
+  todayPanelTitle: {
+    fontSize: 20,
+    fontFamily: fontFamily.headingBold,
+    fontWeight: '700',
+    color: T.onSurface,
+    marginBottom: 16,
+  },
+  panelSubsection: {
+    marginBottom: 4,
+  },
+  panelSubsectionLast: {
+    marginBottom: 0,
+  },
+  panelDivider: {
+    height: 1,
+    backgroundColor: T.border,
+    marginVertical: 16,
   },
   formCardHeader: {
     flexDirection: 'row',
@@ -2019,88 +2136,84 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bodyMedium,
     fontSize: 14,
   },
-  statusBanner: {
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+  statusWord: {
+    marginTop: 4,
   },
-  statusBannerText: {
-    fontSize: 14,
-    fontFamily: fontFamily.bodyMedium,
-  },
-  mealPickerTrigger: {
-    ...inputStyle,
+  mealHeroRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+    alignItems: 'baseline',
+    gap: 6,
+    marginBottom: 8,
   },
-  mealPickerTriggerText: {
-    fontSize: 15,
-    fontFamily: fontFamily.bodyRegular,
+  mealHeroNumber: {
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    fontSize: 34,
     color: T.onSurface,
   },
-  placeholderText: {
+  mealHeroUnit: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodyMedium,
     color: T.muted,
   },
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'flex-end',
-    zIndex: 50,
-    elevation: 50,
-  },
-  modalSheet: {
-    backgroundColor: T.white,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-    ...cardShadow,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  mealHeroBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: T.surfaceLow,
+    overflow: 'hidden',
     marginBottom: 16,
   },
-  modalTitle: {
-    fontSize: 17,
-    fontFamily: fontFamily.headingBold,
-    fontWeight: '700',
-    color: T.onSurface,
+  mealHeroBarFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: T.primary,
   },
-  modalCloseButton: {
-    padding: 4,
-  },
-  mealOptionRow: {
+  sittingSlicesRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    marginBottom: 6,
+    gap: 8,
+    marginBottom: 16,
   },
-  mealOptionRowSelected: {
+  sittingSlice: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: T.border,
+    backgroundColor: T.white,
+  },
+  sittingSliceSelected: {
+    borderColor: T.primary,
+    borderWidth: 2,
     backgroundColor: T.primaryLight,
   },
-  mealOptionText: {
-    fontSize: 15,
-    fontFamily: fontFamily.bodyMedium,
-    color: T.onSurface,
+  sittingSliceFilled: {
+    backgroundColor: T.primary,
+    borderColor: T.primary,
   },
-  mealOptionTextSelected: {
+  sittingSliceLabel: {
+    fontSize: 12,
     fontFamily: fontFamily.bodySemiBold,
     fontWeight: '600',
-    color: T.primary,
+    color: T.onSurface,
   },
-  modalConfirmBtn: {
-    marginTop: 12,
+  sittingSliceLabelFilled: {
+    color: T.white,
+  },
+  sittingSliceKcal: {
+    fontSize: 11,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.muted,
+    marginTop: 2,
+  },
+  sittingSliceKcalFilled: {
+    color: 'rgba(255,255,255,0.8)',
+  },
+  quietFieldLabel: {
+    fontSize: 9,
+    opacity: 0.65,
+    marginBottom: 4,
   },
   input: {
     ...inputStyle,

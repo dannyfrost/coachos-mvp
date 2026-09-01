@@ -9,9 +9,8 @@ import {
 } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { T, fontFamily, cardShadow } from '../../lib/design-system';
+import { T, fontFamily, translucentCardShadow } from '../../lib/design-system';
 
 type CustomTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
 
@@ -133,34 +132,6 @@ function CustomTabBar({
 
   const focusedRoute = state.routes[state.index];
   const activeIndex = state.index;
-  const numTabs = state.routes.length || 1;
-  const tabWidth = barWidth / numTabs;
-  const pillWidth = Math.max(28, tabWidth - 24);
-  const pillMarginLeft = (tabWidth - pillWidth) / 2;
-
-  const indicatorAnim = useRef(
-    new Animated.Value(
-      activeIndex >= 0 ? activeIndex * tabWidth : 0
-    )
-  ).current;
-  const prevIndexRef = useRef(activeIndex);
-
-  useEffect(() => {
-    if (activeIndex >= 0 && tabWidth > 0) {
-      const targetValue = activeIndex * tabWidth;
-      if (prevIndexRef.current === -1) {
-        indicatorAnim.setValue(targetValue);
-      } else {
-        Animated.spring(indicatorAnim, {
-          toValue: targetValue,
-          friction: 8,
-          tension: 110,
-          useNativeDriver: true,
-        }).start();
-      }
-      prevIndexRef.current = activeIndex;
-    }
-  }, [activeIndex, tabWidth, indicatorAnim]);
 
   return (
     <View
@@ -173,32 +144,13 @@ function CustomTabBar({
       style={[
         styles.tabBarContainer,
         {
-          paddingBottom: Math.max(insets.bottom, 8),
+          // Float the capsule above the device's safe-area bottom inset
+          // (home indicator / gesture-nav bar) instead of sitting flush
+          // against it.
+          bottom: insets.bottom + 16,
         },
       ]}
     >
-      {/* Sliding active indicator bar */}
-      {tabWidth > 0 && activeIndex >= 0 && (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.slidingIndicator,
-            {
-              width: pillWidth,
-              left: pillMarginLeft,
-              transform: [{ translateX: indicatorAnim }],
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={[T.primary, T.primaryMid]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.indicatorGradient}
-          />
-        </Animated.View>
-      )}
-
       {/* Tabs */}
       <View style={styles.tabsRow}>
         {state.routes.map((route) => {
@@ -286,28 +238,18 @@ export default function ClientLayout() {
 
 const styles = StyleSheet.create({
   tabBarContainer: {
-    backgroundColor: T.white,
-    borderTopColor: T.border,
-    borderTopWidth: 1,
-    paddingTop: 8,
-    position: 'relative',
-    ...cardShadow,
-  },
-  slidingIndicator: {
+    // Floating capsule: lifted off the screen edges and above the safe
+    // area (see the inline `bottom` offset above), translucent frosted
+    // fill, fully rounded, no top border line.
+    backgroundColor: 'rgba(255,255,255,0.85)',
     position: 'absolute',
-    top: 0,
-    height: 3,
-    zIndex: 10,
-  },
-  indicatorGradient: {
-    flex: 1,
-    borderBottomLeftRadius: 3,
-    borderBottomRightRadius: 3,
-    shadowColor: T.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 3,
+    left: 16,
+    right: 16,
+    borderRadius: 32,
+    paddingTop: 10,
+    paddingBottom: 10,
+    zIndex: 20,
+    ...translucentCardShadow,
   },
   tabsRow: {
     flexDirection: 'row',

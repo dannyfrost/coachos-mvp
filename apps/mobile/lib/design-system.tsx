@@ -37,13 +37,27 @@ export const T = {
 } as const;
 
 export const fontFamily = {
-  headingBold: 'Manrope_700Bold',
-  headingExtraBold: 'Manrope_800ExtraBold',
-  bodyRegular: 'Inter_400Regular',
-  bodyMedium: 'Inter_500Medium',
-  bodySemiBold: 'Inter_600SemiBold',
-  bodyBold: 'Inter_700Bold',
+  headingBold: 'PublicSans_700Bold',
+  headingExtraBold: 'PublicSans_800ExtraBold',
+  bodyRegular: 'PublicSans_400Regular',
+  bodyMedium: 'PublicSans_500Medium',
+  bodySemiBold: 'PublicSans_600SemiBold',
+  bodyBold: 'PublicSans_700Bold',
 };
+
+export const screenBackground: ViewStyle = {
+  flex: 1,
+  backgroundColor: '#fdf6ee', // peach base
+};
+
+export const screenWashColors: [string, string] = ['#fdf1e4', '#e8f1fb']; // peach -> blue sky
+
+// Bottom padding every scrollable client screen adds to its outermost
+// content style so scroll content clears the floating capsule tab bar
+// (~64px tall, floated `insets.bottom + 16` above the screen edge — see
+// (client)/_layout.tsx) plus breathing room for the largest expected
+// safe-area inset.
+export const TAB_BAR_CLEARANCE = 140;
 
 export const cardShadow = Platform.select({
   ios: {
@@ -53,6 +67,23 @@ export const cardShadow = Platform.select({
     shadowRadius: 8,
   },
   android: { elevation: 3 },
+  default: {},
+});
+
+// Card's own shadow: no `elevation` on Android. Android's native elevation
+// shadow draws beneath the view's alpha-blended pixels, so combined with
+// Card's translucent (rgba) fill it reads as a muddy gray halo rather than
+// a clean shadow — a real Android-only rendering artifact, not something
+// opacity tuning fixes. iOS's shadow renders as an external drop shadow and
+// doesn't have this problem. The card's existing 1px border still defines
+// its edge on Android without elevation.
+export const translucentCardShadow = Platform.select({
+  ios: {
+    shadowColor: '#191c1e',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+  },
   default: {},
 });
 
@@ -104,41 +135,31 @@ export const BADGE_MAP: Record<string, { bg: string; text: string; label: string
   '72h': { bg: T.redBg, text: T.red, label: '72h' },
 };
 
-export function Badge({
+export function StatusWord({
   status,
-  small,
   labelOverride,
   style,
 }: {
   status: string;
-  small?: boolean;
   labelOverride?: string;
-  style?: StyleProp<ViewStyle>;
+  style?: StyleProp<TextStyle>;
 }) {
-  const s = BADGE_MAP[status.toLowerCase()] || {
-    bg: '#f3f4f6',
-    text: T.muted,
-    label: status,
-  };
+  const s = BADGE_MAP[status.toLowerCase()] || { text: T.muted, label: status };
   return (
-    <View
+    <Text
       style={[
-        styles.badge,
-        { backgroundColor: s.bg },
-        small ? styles.badgeSmall : styles.badgeNormal,
+        {
+          fontFamily: fontFamily.bodySemiBold,
+          fontWeight: '600',
+          fontSize: 14,
+          color: s.text,
+          textDecorationLine: 'underline',
+        },
         style,
       ]}
     >
-      <Text
-        style={[
-          styles.badgeText,
-          { color: s.text },
-          small ? styles.badgeTextSmall : styles.badgeTextNormal,
-        ]}
-      >
-        {labelOverride ?? s.label}
-      </Text>
-    </View>
+      {labelOverride ?? s.label}
+    </Text>
   );
 }
 
@@ -283,15 +304,13 @@ export function Avatar({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <LinearGradient
-      colors={[T.primary, T.primaryMid]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+    <View
       style={[
         {
           width: size,
           height: size,
           borderRadius: size / 2,
+          backgroundColor: T.primary,
           alignItems: 'center',
           justifyContent: 'center',
         },
@@ -308,7 +327,7 @@ export function Avatar({
       >
         {initials}
       </Text>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -320,37 +339,12 @@ export function initialsOf(name: string): string {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: T.white,
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderRadius: 24,
     padding: 16,
     borderWidth: 1,
-    borderColor: T.border,
-    ...cardShadow,
-  },
-  badge: {
-    alignSelf: 'flex-start',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-  },
-  badgeNormal: {
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-  },
-  badgeSmall: {
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-  },
-  badgeText: {
-    fontFamily: fontFamily.bodyBold,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  badgeTextNormal: {
-    fontSize: 11,
-  },
-  badgeTextSmall: {
-    fontSize: 10,
+    borderColor: 'rgba(255,255,255,0.5)',
+    ...translucentCardShadow,
   },
   btnWrapper: {
     borderRadius: 8,

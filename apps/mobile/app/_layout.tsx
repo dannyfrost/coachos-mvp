@@ -3,15 +3,12 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   useFonts,
-  Manrope_700Bold,
-  Manrope_800ExtraBold,
-} from '@expo-google-fonts/manrope';
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-} from '@expo-google-fonts/inter';
+  PublicSans_400Regular,
+  PublicSans_500Medium,
+  PublicSans_600SemiBold,
+  PublicSans_700Bold,
+  PublicSans_800ExtraBold,
+} from '@expo-google-fonts/public-sans';
 import { T } from '../lib/design-system';
 // Registers the steps background task's TaskManager.defineTask call
 // unconditionally at app startup — required so Android can find the
@@ -21,12 +18,11 @@ import '../lib/stepsBackgroundTask';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Manrope_700Bold,
-    Manrope_800ExtraBold,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
+    PublicSans_400Regular,
+    PublicSans_500Medium,
+    PublicSans_600SemiBold,
+    PublicSans_700Bold,
+    PublicSans_800ExtraBold,
   });
 
   if (!fontsLoaded) {

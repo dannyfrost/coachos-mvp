@@ -96,4 +96,53 @@ describe('extractWeightCandidate', () => {
     ]);
     expect(extractWeightCandidate(result)).toBe(68.9);
   });
+
+  it('scores two numbers sharing one line by their own element size, not the shared line box', () => {
+    // Both "35" and "81.4" sit on the same OCR line (e.g. a weight reading
+    // next to a smaller secondary number like a BMI value), so both are
+    // "near kg" and the tiebreak falls to area. Real OCR gives each number
+    // its own small element frame even when they share a line; the fix
+    // under test is using that per-element frame instead of the shared,
+    // identical line frame (which would make them tie and fall back to
+    // left-to-right order, incorrectly picking "35").
+    const result: OcrResult = {
+      text: '35 81.4 kg',
+      blocks: [
+        {
+          text: '35 81.4 kg',
+          frame: FRAME_LARGE,
+          lines: [
+            {
+              text: '35 81.4 kg',
+              frame: FRAME_LARGE,
+              elements: [
+                { text: '35', frame: FRAME_SMALL },
+                { text: '81.4', frame: FRAME_LARGE },
+                { text: 'kg', frame: FRAME_SMALL },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(extractWeightCandidate(result)).toBe(81.4);
+  });
+
+  it('rejects a correctly-read lbs value instead of silently treating it as kg', () => {
+    // 165 lbs is a real, plausible body weight and also falls inside the
+    // 30-300 "plausible kg" range — without a unit check this would be
+    // accepted as 165 kg, a badly wrong value despite the OCR read being
+    // perfectly correct.
+    expect(extractWeightCandidate(resultFromLines([{ text: '165 lbs' }]))).toBeNull();
+    expect(extractWeightCandidate(resultFromLines([{ text: '165 lb' }]))).toBeNull();
+    expect(extractWeightCandidate(resultFromLines([{ text: '165.4 pounds' }]))).toBeNull();
+  });
+
+  it('still reads a valid kg candidate on a different line when another line is in lbs', () => {
+    const result = resultFromLines([
+      { text: '363.8 lbs', frame: FRAME_SMALL },
+      { text: '165 kg', frame: FRAME_LARGE },
+    ]);
+    expect(extractWeightCandidate(result)).toBe(165);
+  });
 });

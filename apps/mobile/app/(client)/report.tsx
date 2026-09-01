@@ -9,6 +9,7 @@ import {
   Linking,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import WeightTrendChart from '../../components/WeightTrendChart';
 import StepsBarChart from '../../components/StepsBarChart';
@@ -18,8 +19,11 @@ import {
   fontFamily,
   Card,
   Btn,
-  Badge,
+  StatusWord,
   SectionLabel,
+  screenBackground,
+  screenWashColors,
+  TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
@@ -176,12 +180,19 @@ export default function ReportScreen() {
   const stepsPoints = logs.map((l) => ({ date: l.log_date, value: l.steps }));
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.primary} />
-      }
-    >
+    <View style={screenBackground}>
+      <LinearGradient
+        colors={screenWashColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.primary} />
+        }
+      >
       <Text style={styles.heading}>My Progress</Text>
 
       {fetchError && (
@@ -268,7 +279,7 @@ export default function ReportScreen() {
             absenceEvents.map((e) => (
               <Card key={e.id} style={[styles.card, styles.alertCard]}>
                 <View style={styles.alertHeaderRow}>
-                  <Badge status={e.level} small />
+                  <StatusWord status={e.level} />
                   <Text style={styles.alertTitle}>
                     {e.action_taken.replace(/_/g, ' ')}
                   </Text>
@@ -284,7 +295,8 @@ export default function ReportScreen() {
           )}
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -293,7 +305,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
     paddingTop: 52,
-    backgroundColor: T.surface,
+    // Bottom padding clears the floating capsule tab bar (~64px tall,
+    // floated `insets.bottom + 16` above the screen edge — see
+    // (client)/_layout.tsx) plus breathing room for the largest expected
+    // safe-area inset.
+    paddingBottom: TAB_BAR_CLEARANCE,
+    backgroundColor: 'transparent',
   },
   heading: {
     fontSize: 22,

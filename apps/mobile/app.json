@@ -42,13 +42,19 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.coachos.app"
+      "bundleIdentifier": "com.coachos.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.coachos.app",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "extra": {
       "router": {},
