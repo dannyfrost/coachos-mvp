@@ -49,22 +49,21 @@ Check `apps/web/app/globals.css:41`'s existing media query (flagged but not insp
 
 ## 3. Flash cards — new data, not just new styling
 
-**Real gap found:** the current `FlashCard.tsx` (202 lines) shares **zero** field overlap with COACHOS.md's spec. Current fields: `status/reason/food_summary/interpretation/notes/last_log_at` + a coach-notes textarea + Refresh/Profile buttons. Spec wants: navy square initials, Fraunces name, protocol + week + time, kg/steps vs target/gap, Open file, **and** a 7-day log strip (oldest-left/today-right; navy tick = a daily log landed that day, neutral tick = nothing; **bar height = steps vs that client's step target**; a paused client shows seven neutral ticks).
+**Real gap found:** the current `FlashCard.tsx` (202 lines) shares **zero** field overlap with COACHOS.md's spec. Current fields: `status/reason/food_summary/interpretation/notes/last_log_at` + a coach-notes textarea + Refresh/Profile buttons. Spec wants: navy square initials, Fraunces name, protocol + week + time, kg/steps + a steps-trend indicator, Open file, **and** a 7-day log strip (oldest-left/today-right; navy tick = a daily log landed that day, neutral tick = nothing; **bar height = that day's steps relative to the client's own highest day in the visible 7-day window**; a paused client shows seven neutral ticks).
 
 This needs a real data query, not a style change: last-7-days `daily_logs` rows (`weight`, `steps`, `log_date` — table already has these columns, confirmed in `supabase/migrations/002_create_tables.sql:173-185`) per client shown on the dashboard, plus each client's assigned plan/protocol name + week + session time for the card header.
 
-**Decision requiring your sign-off (new schema field):** COACHOS.md never defines where "step target" comes from. No such field exists anywhere in the schema today (confirmed via repo-wide grep). Proposed: add `step_target integer NOT NULL DEFAULT 8000` to `public.clients`, coach-editable (expose it wherever plan/client settings are edited — likely the client file's Overview tab or Settings). Flagging this explicitly — if you want it sourced differently (e.g. per-plan instead of per-client, or a different default), say so before the plan stage; this is a real migration, not easily undone once client data starts depending on it.
+**Resolved — no new field.** User's call: skip `step_target` entirely (no clear ownership/purpose for a coach-set numeric target was established). Bar height is self-relative instead: each visible day's steps as a fraction of that same client's own max day in the 7-day window (a day with 0 logged steps or no log at all renders as a neutral/empty tick, not a zero-height navy bar — matches the "neutral tick = nothing" rule). Same no-target, self-scaled approach the mobile app's own `StepsBarChart` already uses — no new schema, no new coach-facing setting to add or maintain.
 
 Whether this needs a new RPC (a `get_dashboard_flash_cards`-style query joining `clients` + last-7-`daily_logs` + `plans`) or can be composed client-side from existing per-client queries is an implementation-stage decision, not a design-stage one — the plan should investigate current dashboard data-fetching (`DashboardClient.tsx`) before choosing.
 
-## 4. Next-session desk — bigger gap than initially scoped, needs your call
+## 4. Next-session desk — resolved: stub for now, real scheduling later
 
 **Real gap found (confirmed via repo-wide search, not assumed):** there is no appointments/sessions/scheduling concept **anywhere** in this codebase — no table in any migration, no "Today" list in `Shell.tsx`, nothing. COACHOS.md's "next session desk" and its sidebar "Today" appointments list both assume a scheduling system this app has never had. Coaches currently have no way to record or view scheduled sessions at all; the product's only time-based concepts are `daily_logs.log_date` (client-submitted, not coach-scheduled) and `plans` (assigned content, no calendar).
 
-Building the real thing (an appointments table + RLS + coach UI to create/view scheduled sessions + the sidebar list + the desk panel reading from it) is a new feature on the scale of VIP Groups (which was explicitly split off for exactly this reason) — not a retheme-pass addition. Recommending the same treatment for consistency, but this is your call, not mine to make unilaterally:
+**User's call: same treatment as Groups.** Real scheduling (appointments table + RLS + coach UI to create/view sessions + the sidebar list + the desk panel reading from it) is deferred to its own future follow-up project — out of scope here.
 
-- **Option A (recommended for this pass):** skip the real scheduling system. Fill the desk space with something that already has real data behind it and serves a similar "don't waste the space, give the coach something actionable" purpose — e.g. the absence/alerts queue, or the roster's most-urgent (red/yellow) clients. Ship a working, honest desk now; build real scheduling as its own follow-up project later, same as Groups.
-- **Option B:** include a minimal scheduling system in this pass anyway (new table, coach can add a session note/time per client, sidebar reads it) — real scope growth, longer plan.
+For this pass, the ≥1100px sidebar's leftover vertical space is filled with something that already has real data behind it rather than staying empty: the absence/alerts queue (already exists — `app/(coach)/alerts/`) and/or the roster's most-urgent (red/yellow flash-card) clients, surfaced as a compact "needs attention" panel. Exact content choice is an implementation-stage decision (whichever the actual `alerts` data model supports more cleanly) — the requirement is: real data, not a placeholder, not empty background, and it must be clearly a *different* thing from the real scheduling desk that'll replace it later (don't name it "Next session" if it isn't one).
 
 ## 5. Per-screen retheme scope
 
@@ -80,8 +79,13 @@ Per COACHOS.md: 180ms fade/rise on view change, navy underline on active nav and
 
 This app has no existing frontend test suite for these screens (confirm at plan time — mirrors the mobile situation where verification leaned on `tsc`/manual review rather than component tests, since these are presentational Next.js pages). Verification plan: `next build`/typecheck must stay clean after each task, and — since this is a `next dev`-servable web app, unlike the mobile app which had no available emulator all session — actual visual verification via the `run` skill (start the dev server, view real pages) IS available here and should be used, unlike the mobile retheme which had to defer all visual confirmation to physical-device testing.
 
-## Open decisions for your review (flagged, not yet resolved)
+## Resolved decisions (previously flagged, now settled)
 
-1. **`step_target` field** (section 3) — location (`clients` vs per-plan), default value, and who can edit it.
-2. **Next-session desk scope** (section 4) — Option A (stub with existing data, real scheduling later) vs Option B (build minimal real scheduling now). Confirmed via repo-wide search: no scheduling concept exists anywhere today, so this is a real feature decision, not a styling one.
-3. **`Badge` vs `StatusWord` audit** — which existing colored chips are "coaching status" (convert) vs. other tags (keep as `Badge`) needs a per-screen pass at plan time, not a blanket rule.
+1. **Step target** — no new field. Flash-card steps bar is self-relative to each client's own 7-day max (section 3).
+2. **Next-session desk** — no scheduling system this pass. Sidebar space filled with existing alerts/roster data instead; real scheduling deferred to its own future project (section 4).
+
+## Still open for plan-time investigation (not blocking, no user decision needed)
+
+1. **`Badge` vs `StatusWord` audit** — which existing colored chips are "coaching status" (convert) vs. other tags (keep as `Badge`) needs a per-screen pass at plan time, not a blanket rule.
+2. Whether the flash-card dashboard query becomes a new RPC or a client-composed query (section 3).
+3. Exact content for the "needs attention" desk panel — alerts queue vs. roster's red/yellow clients vs. both (section 4).
