@@ -36,6 +36,24 @@ function contentToText(content: unknown): string {
   return typeof content === 'string' ? content : ''
 }
 
+type MealBudget = { cap: number; breakfast: number; lunch: number; dinner: number; snack: number }
+
+function contentMealBudget(content: unknown): MealBudget | null {
+  if (content == null || typeof content !== 'object') return null
+  const mb = (content as Record<string, unknown>).mealBudget
+  if (mb == null || typeof mb !== 'object') return null
+  const m = mb as Record<string, unknown>
+  const nums = [m.cap, m.breakfast, m.lunch, m.dinner, m.snack]
+  if (!nums.every(n => typeof n === 'number' && Number.isFinite(n))) return null
+  return {
+    cap: m.cap as number,
+    breakfast: m.breakfast as number,
+    lunch: m.lunch as number,
+    dinner: m.dinner as number,
+    snack: m.snack as number,
+  }
+}
+
 function contentFile(content: unknown): PlanFile | null {
   if (content == null || typeof content !== 'object') return null
   const file = (content as Record<string, unknown>).file
@@ -198,15 +216,48 @@ function PlanFormModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const existingMealBudget = contentMealBudget(initial?.content)
+  const [mbCap, setMbCap] = useState(existingMealBudget ? String(existingMealBudget.cap) : '')
+  const [mbBreakfast, setMbBreakfast] = useState(existingMealBudget ? String(existingMealBudget.breakfast) : '')
+  const [mbLunch, setMbLunch] = useState(existingMealBudget ? String(existingMealBudget.lunch) : '')
+  const [mbDinner, setMbDinner] = useState(existingMealBudget ? String(existingMealBudget.dinner) : '')
+  const [mbSnack, setMbSnack] = useState(existingMealBudget ? String(existingMealBudget.snack) : '')
+
+  // Meal budget is all-or-nothing: only written to content when every field
+  // is filled in, so a half-filled form can't ship a broken partial budget.
+  // Leaving all five blank omits mealBudget entirely — the client app falls
+  // back to its own defaults, same as any plan created before this existed.
+  function buildMealBudget(): MealBudget | null {
+    const raw = [mbCap, mbBreakfast, mbLunch, mbDinner, mbSnack]
+    if (raw.every(v => v.trim() === '')) return null
+    const nums = raw.map(v => Number(v))
+    if (nums.some(n => !Number.isFinite(n) || n <= 0)) return null
+    return { cap: nums[0], breakfast: nums[1], lunch: nums[2], dinner: nums[3], snack: nums[4] }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setSaving(true)
     setError(null)
+
+    const raw = [mbCap, mbBreakfast, mbLunch, mbDinner, mbSnack]
+    const somefilled = raw.some(v => v.trim() !== '')
+    const allFilled = raw.every(v => v.trim() !== '')
+    if (somefilled && !allFilled) {
+      setError('Fill in all five meal-budget fields, or leave them all blank to use the default.')
+      return
+    }
+    const mealBudget = buildMealBudget()
+    if (somefilled && !mealBudget) {
+      setError('Meal-budget values must be positive numbers.')
+      return
+    }
+
+    setSaving(true)
     const supabase = createSupabaseBrowserClient()
 
     if (initial) {
       const existingFile = contentFile(initial.content)
-      const newContent = { body, ...(existingFile ? { file: existingFile } : {}) }
+      const newContent = { body, ...(existingFile ? { file: existingFile } : {}), ...(mealBudget ? { mealBudget } : {}) }
       const { data, error: updateError } = await supabase
         .from('plans')
         .update({ title, type, content: newContent, is_template: isTemplate, updated_at: new Date().toISOString() })
@@ -232,7 +283,7 @@ function PlanFormModal({
 
       const { data, error: insertError } = await supabase
         .from('plans')
-        .insert({ coach_id: user.id, title, type, content: { body }, is_template: isTemplate })
+        .insert({ coach_id: user.id, title, type, content: { body, ...(mealBudget ? { mealBudget } : {}) }, is_template: isTemplate })
         .select()
         .single()
 
@@ -283,6 +334,55 @@ function PlanFormModal({
               style={{ ...inputStyle, resize: 'vertical', minHeight: 140 }}
             />
           </div>
+          {type === 'meal' && (
+            <div style={{ marginBottom: 12 }}>
+              <FieldLabel>Meal Budget (optional — blank uses the app default)</FieldLabel>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Daily cap (kcal)"
+                  value={mbCap}
+                  onChange={e => setMbCap(e.target.value)}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Breakfast"
+                  value={mbBreakfast}
+                  onChange={e => setMbBreakfast(e.target.value)}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Lunch"
+                  value={mbLunch}
+                  onChange={e => setMbLunch(e.target.value)}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Dinner"
+                  value={mbDinner}
+                  onChange={e => setMbDinner(e.target.value)}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Snack"
+                  value={mbSnack}
+                  onChange={e => setMbSnack(e.target.value)}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+              </div>
+            </div>
+          )}
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 13, color: T.onSurfaceVar, cursor: 'pointer' }}>
             <input type="checkbox" checked={isTemplate} onChange={e => setIsTemplate(e.target.checked)} />
             Mark as reusable template

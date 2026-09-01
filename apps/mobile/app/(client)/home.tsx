@@ -47,12 +47,14 @@ import {
   TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
 import {
-  MEAL_CAP,
-  MEAL_KCAL,
   MEAL_TYPE_ORDER,
   MealType,
+  PlanMealBudget,
   computeKcalLeft,
   sittingSliceState,
+  parsePlanMealBudget,
+  mealKcalMap,
+  mealCap,
 } from '../../lib/mealBudget';
 import {
   Chip,
@@ -226,6 +228,7 @@ export default function HomeScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [mealDescriptionFocused, setMealDescriptionFocused] = useState(false);
+  const [planMealBudget, setPlanMealBudget] = useState<PlanMealBudget | null>(null);
 
   const submitSuccessAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -335,6 +338,7 @@ export default function HomeScreen() {
         mealsResult,
         unreadResult,
         latestMsgResult,
+        mealPlanResult,
       ] = await Promise.all([
         supabase
           .from('daily_logs')
@@ -375,6 +379,15 @@ export default function HomeScreen() {
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        supabase
+          .from('plan_assignments')
+          .select('assigned_at, plans(content)')
+          .eq('client_id', uid)
+          .eq('plan_type', 'meal')
+          .eq('status', 'active')
+          .order('assigned_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       if (logsResult.error || puResult.error || clientResult.error || mealsResult.error) {
@@ -384,6 +397,9 @@ export default function HomeScreen() {
       if (typeof unreadResult.count === 'number') {
         setUnreadCount(unreadResult.count);
       }
+
+      const mealPlan = mealPlanResult.data?.plans as { content: unknown } | null | undefined;
+      setPlanMealBudget(parsePlanMealBudget(mealPlan?.content));
 
       const allLogs = (logsResult.data ?? []) as DailyLogRow[];
       const todayRow = allLogs.find((l) => l.log_date === todayISO) ?? null;
@@ -999,7 +1015,9 @@ export default function HomeScreen() {
   const loggedMealTypes: MealType[] = (Object.keys(mealEntries) as MealType[]).filter(
     (t) => mealEntries[t].savedDescription.trim().length > 0
   );
-  const kcalLeft = computeKcalLeft(loggedMealTypes);
+  const effectiveMealCap = mealCap(planMealBudget);
+  const effectiveMealKcalMap = mealKcalMap(planMealBudget);
+  const kcalLeft = computeKcalLeft(loggedMealTypes, effectiveMealCap, effectiveMealKcalMap);
 
   const mealsDone =
     Object.values(mealEntries).some((m) => m.description.trim().length > 0) ||
@@ -1586,7 +1604,7 @@ export default function HomeScreen() {
                     {
                       width: `${Math.max(
                         0,
-                        Math.min(100, (kcalLeft / MEAL_CAP) * 100)
+                        Math.min(100, (kcalLeft / effectiveMealCap) * 100)
                       )}%`,
                     },
                   ]}
@@ -1613,7 +1631,7 @@ export default function HomeScreen() {
                       onPress={() => handleMealTypeChange(opt.type)}
                       disabled={submitSuccess}
                       accessibilityRole="button"
-                      accessibilityLabel={`${opt.label}, ${MEAL_KCAL[opt.type]} kcal, ${
+                      accessibilityLabel={`${opt.label}, ${effectiveMealKcalMap[opt.type]} kcal, ${
                         sliceState === 'filled'
                           ? 'logged'
                           : sliceState === 'selected'
@@ -1636,7 +1654,7 @@ export default function HomeScreen() {
                           sliceState === 'filled' && styles.sittingSliceKcalFilled,
                         ]}
                       >
-                        {MEAL_KCAL[opt.type]}
+                        {effectiveMealKcalMap[opt.type]}
                       </Text>
                     </TouchableOpacity>
                   );

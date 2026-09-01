@@ -1,4 +1,12 @@
-import { MEAL_CAP, MEAL_KCAL, computeKcalLeft, sittingSliceState } from '../mealBudget';
+import {
+  MEAL_CAP,
+  MEAL_KCAL,
+  computeKcalLeft,
+  sittingSliceState,
+  parsePlanMealBudget,
+  mealKcalMap,
+  mealCap,
+} from '../mealBudget';
 
 describe('meal budget constants', () => {
   it('caps at 1850 with the four spec\'d sitting budgets', () => {
@@ -23,6 +31,51 @@ describe('computeKcalLeft', () => {
 
   it('ignores duplicate entries for the same sitting', () => {
     expect(computeKcalLeft(['breakfast', 'breakfast'])).toBe(1400);
+  });
+
+  it('uses an overridden cap/kcal map when a coach-set plan budget is passed', () => {
+    const kcalMap = { breakfast: 300, lunch: 400, dinner: 500, snack: 100 };
+    expect(computeKcalLeft(['breakfast'], 2000, kcalMap)).toBe(1700);
+    expect(computeKcalLeft([], 2000, kcalMap)).toBe(2000);
+  });
+});
+
+describe('parsePlanMealBudget', () => {
+  it('returns null for a plan with no mealBudget set', () => {
+    expect(parsePlanMealBudget(null)).toBeNull();
+    expect(parsePlanMealBudget({ body: 'some notes' })).toBeNull();
+  });
+
+  it('returns null when mealBudget is present but malformed (missing/non-numeric fields)', () => {
+    expect(parsePlanMealBudget({ mealBudget: { cap: 2000 } })).toBeNull();
+    expect(
+      parsePlanMealBudget({ mealBudget: { cap: '2000', breakfast: 400, lunch: 500, dinner: 600, snack: 200 } })
+    ).toBeNull();
+  });
+
+  it('returns null when any field is zero or negative', () => {
+    expect(
+      parsePlanMealBudget({ mealBudget: { cap: 2000, breakfast: 0, lunch: 500, dinner: 600, snack: 200 } })
+    ).toBeNull();
+  });
+
+  it('parses a well-formed coach-set budget', () => {
+    expect(
+      parsePlanMealBudget({ mealBudget: { cap: 2000, breakfast: 400, lunch: 500, dinner: 600, snack: 200 } })
+    ).toEqual({ cap: 2000, breakfast: 400, lunch: 500, dinner: 600, snack: 200 });
+  });
+});
+
+describe('mealKcalMap / mealCap', () => {
+  it('fall back to the fixed defaults when there is no plan budget', () => {
+    expect(mealKcalMap(null)).toBe(MEAL_KCAL);
+    expect(mealCap(null)).toBe(MEAL_CAP);
+  });
+
+  it('use the plan budget\'s own values when one is provided', () => {
+    const budget = { cap: 2000, breakfast: 400, lunch: 500, dinner: 600, snack: 200 };
+    expect(mealKcalMap(budget)).toEqual({ breakfast: 400, lunch: 500, dinner: 600, snack: 200 });
+    expect(mealCap(budget)).toBe(2000);
   });
 });
 

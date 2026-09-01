@@ -31,11 +31,13 @@ import {
   TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
 import {
-  MEAL_CAP,
-  MEAL_KCAL,
   MEAL_TYPE_ORDER,
   MealType,
+  PlanMealBudget,
   computeKcalLeft,
+  parsePlanMealBudget,
+  mealKcalMap,
+  mealCap,
 } from '../../lib/mealBudget';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
@@ -70,6 +72,7 @@ export default function MealsScreen() {
   const [fetchError, setFetchError] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [coachId, setCoachId] = useState<string | null>(null);
+  const [planMealBudget, setPlanMealBudget] = useState<PlanMealBudget | null>(null);
   const [session, setSession] = useState<{ access_token: string } | null>(null);
 
   const [cards, setCards] = useState<Record<MealType, MealCardState>>({
@@ -159,7 +162,7 @@ export default function MealsScreen() {
     setSession({ access_token: sess.access_token });
 
     try {
-      const [mealsResult, clientResult] = await Promise.all([
+      const [mealsResult, clientResult, mealPlanResult] = await Promise.all([
         supabase
           .from('meal_entries')
           .select('id, meal_type, description, photo_key')
@@ -170,6 +173,15 @@ export default function MealsScreen() {
           .select('coach_id')
           .eq('id', uid)
           .single(),
+        supabase
+          .from('plan_assignments')
+          .select('assigned_at, plans(content)')
+          .eq('client_id', uid)
+          .eq('plan_type', 'meal')
+          .eq('status', 'active')
+          .order('assigned_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       if (mealsResult.error || clientResult.error) {
@@ -179,6 +191,9 @@ export default function MealsScreen() {
       if (clientResult.data) {
         setCoachId(clientResult.data.coach_id);
       }
+
+      const mealPlan = mealPlanResult.data?.plans as { content: unknown } | null | undefined;
+      setPlanMealBudget(parsePlanMealBudget(mealPlan?.content));
 
       if (mealsResult.data) {
         setCards((prev) => {
@@ -395,7 +410,9 @@ export default function MealsScreen() {
   const loggedMealTypes: MealType[] = (Object.keys(cards) as MealType[]).filter(
     (t) => cards[t].savedDescription.trim().length > 0
   );
-  const kcalLeft = computeKcalLeft(loggedMealTypes);
+  const effectiveMealCap = mealCap(planMealBudget);
+  const effectiveMealKcalMap = mealKcalMap(planMealBudget);
+  const kcalLeft = computeKcalLeft(loggedMealTypes, effectiveMealCap, effectiveMealKcalMap);
 
   return (
     <View style={screenBackground}>
@@ -447,7 +464,7 @@ export default function MealsScreen() {
                     {
                       width: `${Math.max(
                         0,
-                        Math.min(100, (kcalLeft / MEAL_CAP) * 100)
+                        Math.min(100, (kcalLeft / effectiveMealCap) * 100)
                       )}%`,
                     },
                   ]}
@@ -466,7 +483,7 @@ export default function MealsScreen() {
               <Card key={type} style={styles.mealCard}>
                 <View style={styles.mealTitleRow}>
                   <Text style={styles.mealTitle}>{label}</Text>
-                  <Text style={styles.mealKcalBudget}>{MEAL_KCAL[type]} kcal</Text>
+                  <Text style={styles.mealKcalBudget}>{effectiveMealKcalMap[type]} kcal</Text>
                 </View>
 
                 <FieldLabel>Description</FieldLabel>

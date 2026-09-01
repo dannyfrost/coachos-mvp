@@ -24,10 +24,58 @@ export const MEAL_TYPE_ORDER: { type: MealType; label: string }[] = [
   { type: 'snack', label: 'Snack' },
 ];
 
-export function computeKcalLeft(loggedTypes: MealType[]): number {
+/**
+ * `cap`/`kcalMap` default to the fixed constants above but can be overridden
+ * per-call with a coach-set plan budget (see PlanMealBudget below) — the
+ * math itself doesn't change, only which numbers it's computed against.
+ */
+export function computeKcalLeft(
+  loggedTypes: MealType[],
+  cap: number = MEAL_CAP,
+  kcalMap: Record<MealType, number> = MEAL_KCAL
+): number {
   const uniqueLogged = new Set(loggedTypes);
-  const spent = Array.from(uniqueLogged).reduce((sum, t) => sum + MEAL_KCAL[t], 0);
-  return Math.max(0, MEAL_CAP - spent);
+  const spent = Array.from(uniqueLogged).reduce((sum, t) => sum + kcalMap[t], 0);
+  return Math.max(0, cap - spent);
+}
+
+export type PlanMealBudget = {
+  cap: number;
+  breakfast: number;
+  lunch: number;
+  dinner: number;
+  snack: number;
+};
+
+/**
+ * Reads a coach-set meal budget out of a plan's `content` JSONB (shape
+ * written by the coach-web Plans screen). Returns null for anything that
+ * isn't a well-formed budget — including a plan with no budget set at all —
+ * so the caller can fall back to MEAL_CAP/MEAL_KCAL uniformly.
+ */
+export function parsePlanMealBudget(content: unknown): PlanMealBudget | null {
+  if (content == null || typeof content !== 'object') return null;
+  const mb = (content as Record<string, unknown>).mealBudget;
+  if (mb == null || typeof mb !== 'object') return null;
+  const m = mb as Record<string, unknown>;
+  const nums = [m.cap, m.breakfast, m.lunch, m.dinner, m.snack];
+  if (!nums.every((n) => typeof n === 'number' && Number.isFinite(n) && n > 0)) return null;
+  return {
+    cap: m.cap as number,
+    breakfast: m.breakfast as number,
+    lunch: m.lunch as number,
+    dinner: m.dinner as number,
+    snack: m.snack as number,
+  };
+}
+
+export function mealKcalMap(budget: PlanMealBudget | null): Record<MealType, number> {
+  if (!budget) return MEAL_KCAL;
+  return { breakfast: budget.breakfast, lunch: budget.lunch, dinner: budget.dinner, snack: budget.snack };
+}
+
+export function mealCap(budget: PlanMealBudget | null): number {
+  return budget?.cap ?? MEAL_CAP;
 }
 
 export type SittingSliceState = 'filled' | 'selected' | 'empty';
