@@ -5,6 +5,7 @@ const MAX_WEIGHT_KG = 300;
 const NUMBER_TOKEN = /\d{1,3}[.,]\d{1}|\d{1,3}/g;
 const VALID_FORMAT = /^\d{1,3}(\.\d{1})?$/;
 const KG_LABEL = /\bkg\b/i;
+const LB_LABEL = /\b(lbs?|pounds?)\b/i;
 
 type Candidate = {
   value: number;
@@ -22,27 +23,46 @@ export function extractWeightCandidate(result: OcrResult): number | null {
 
   for (const block of result.blocks) {
     for (const line of block.lines) {
-      const matches = line.text.match(NUMBER_TOKEN);
-      if (!matches) continue;
-
       // "Near a kg label" is deliberately scoped to the number's own line,
       // not the whole block — crediting sibling lines in the same block
       // let unrelated numbers (e.g. a battery-level readout) inherit a
       // neighboring line's "kg" text and outrank the real weight reading.
       const nearKg = KG_LABEL.test(line.text);
 
-      for (const raw of matches) {
-        const normalized = raw.replace(',', '.');
-        if (!VALID_FORMAT.test(normalized)) continue;
+      // A line labeled lb/lbs/pounds is a real body-weight number, but in
+      // the wrong unit for this field (kg-only). Its digits fall inside
+      // the same 30-300 "plausible weight" range as a kg reading, so
+      // without this check a correctly-read lbs value gets silently
+      // accepted as if it were kg — same digits, badly wrong value. Drop
+      // the whole line's candidates rather than guess a conversion: the
+      // photographed number might be lbs on a bathroom scale, or might be
+      // something else entirely next to an unrelated "lb" abbreviation.
+      if (LB_LABEL.test(line.text)) continue;
 
-        const value = parseFloat(normalized);
-        if (isNaN(value) || value < MIN_WEIGHT_KG || value > MAX_WEIGHT_KG) continue;
+      // Score each number by its OWN element's bounding box, not the
+      // shared line box. A line can carry more than one number (e.g. a
+      // weight reading next to a BMI/delta value on the same visual row)
+      // — scoring by the line's box gives every number on that line the
+      // identical (inflated) area, so the real, visually largest reading
+      // loses its area advantage and the tiebreak degenerates to
+      // left-to-right text order instead of actual on-screen size.
+      for (const element of line.elements) {
+        const matches = element.text.match(NUMBER_TOKEN);
+        if (!matches) continue;
 
-        candidates.push({
-          value,
-          area: line.frame.width * line.frame.height,
-          nearKg,
-        });
+        for (const raw of matches) {
+          const normalized = raw.replace(',', '.');
+          if (!VALID_FORMAT.test(normalized)) continue;
+
+          const value = parseFloat(normalized);
+          if (isNaN(value) || value < MIN_WEIGHT_KG || value > MAX_WEIGHT_KG) continue;
+
+          candidates.push({
+            value,
+            area: element.frame.width * element.frame.height,
+            nearKg,
+          });
+        }
       }
     }
   }
