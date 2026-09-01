@@ -68,6 +68,8 @@ import {
   getYesterdayISO,
 } from '../../lib/stats';
 import { extractWeightCandidate } from '../../lib/weightOcr';
+import { extractStepsCandidate } from '../../lib/stepsOcr';
+import { initialStepsOcrState, reduceStepsOcrState } from '../../lib/stepsOcrState';
 import {
   isPedometerAvailable,
   hasStepsPermission,
@@ -209,6 +211,8 @@ export default function HomeScreen() {
   const [stepsSyncBusy, setStepsSyncBusy] = useState(false);
   const [stepsSyncUnavailable, setStepsSyncUnavailable] = useState(false);
   const [stepsSyncError, setStepsSyncError] = useState(false);
+  const [stepsOcrState, setStepsOcrState] = useState(initialStepsOcrState);
+  const [stepsOcrBusy, setStepsOcrBusy] = useState(false);
   // Guards BOTH the automatic (tab-focus) and manual (refresh button) sync
   // paths against running concurrently — the button's `disabled` prop alone
   // only blocks a second MANUAL tap; it doesn't see an in-flight automatic
@@ -688,6 +692,94 @@ export default function HomeScreen() {
       Alert.alert('From photo', undefined, [
         { text: 'Take Photo', onPress: handleWeightCameraPress },
         { text: 'Choose from Library', onPress: handleWeightGalleryPress },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
+  // OCR fallback for Steps — only ever reachable from the UI when the
+  // primary pedometer path has already failed/is unavailable (see the
+  // conditional render of the "From Photo" trigger below), matching the
+  // fallback-hierarchy requirement: pedometer first, OCR only as a
+  // fallback, never a parallel/competing input path.
+  const runStepsOcr = async (photoUri: string) => {
+    setStepsOcrBusy(true);
+    try {
+      const ocrResult = await recognizeText(photoUri, 'latin');
+      const parsed = extractStepsCandidate(ocrResult);
+
+      if (parsed.status === 'no_candidate') {
+        setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+        return;
+      }
+
+      // A low-confidence read is pre-filled but never treated as final —
+      // reduceStepsOcrState routes it to 'needs_confirmation', which the
+      // UI renders as an explicit confirm-or-edit prompt rather than
+      // silently accepting it, per the fallback-hierarchy requirement.
+      setStepsOcrState((s) =>
+        reduceStepsOcrState(s, {
+          type: parsed.confidence === 'high' ? 'OCR_SUCCESS_HIGH_CONFIDENCE' : 'OCR_SUCCESS_LOW_CONFIDENCE',
+          photoUri,
+          value: parsed.steps,
+        })
+      );
+      setSteps(String(parsed.steps));
+      dirtyFieldsRef.current.steps = true;
+      setSubmitSuccess(false);
+    } catch (err) {
+      console.warn('[steps-ocr] recognizeText failed:', err instanceof Error ? err.message : err);
+      setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+    } finally {
+      setStepsOcrBusy(false);
+    }
+  };
+
+  const handleStepsCameraPress = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'PERMISSION_DENIED' }));
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+    await runStepsOcr(result.assets[0].uri);
+  };
+
+  const handleStepsGalleryPress = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'PERMISSION_DENIED' }));
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+    await runStepsOcr(result.assets[0].uri);
+  };
+
+  const handleStepsFromPhotoPress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Take Photo', 'Choose from Library', 'Cancel'], cancelButtonIndex: 2 },
+        (index) => {
+          if (index === 0) handleStepsCameraPress();
+          if (index === 1) handleStepsGalleryPress();
+        }
+      );
+    } else {
+      Alert.alert('Steps from photo', undefined, [
+        { text: 'Take Photo', onPress: handleStepsCameraPress },
+        { text: 'Choose from Library', onPress: handleStepsGalleryPress },
         { text: 'Cancel', style: 'cancel' },
       ]);
     }
@@ -1547,6 +1639,58 @@ export default function HomeScreen() {
                 </View>
               )}
 
+              {/* OCR fallback — only surfaces once the primary pedometer
+                  path has actually failed or is unavailable, per the
+                  fallback hierarchy (pedometer -> OCR -> manual entry).
+                  Never shown as a parallel/competing input alongside a
+                  working pedometer sync. */}
+              {(stepsSyncUnavailable || stepsSyncError) && stepsOcrState.status !== 'manual_fallback' && (
+                <TouchableOpacity
+                  onPress={handleStepsFromPhotoPress}
+                  disabled={stepsOcrBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Read steps from a screenshot or photo"
+                  style={styles.btnOutline}
+                >
+                  {stepsOcrBusy ? (
+                    <ActivityIndicator size="small" color={T.primary} />
+                  ) : (
+                    <Text style={styles.btnOutlineText}>Read steps from a photo</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              {stepsOcrState.status === 'needs_confirmation' && (
+                <View style={styles.retakeBanner}>
+                  <Text style={styles.retakeBannerText}>
+                    Found {stepsOcrState.suggestedValue} — but couldn't confirm it's labeled "steps". Correct?
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'CONFIRMED' }))}
+                    accessibilityRole="button"
+                    accessibilityLabel="Confirm this is the correct step count"
+                  >
+                    <Text style={styles.retakeBannerAction}>Yes, correct</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {stepsOcrState.status === 'retake_prompt' && (
+                <View style={styles.retakeBanner}>
+                  <Text style={styles.retakeBannerText}>Couldn't read a step count from that photo — try again?</Text>
+                  <TouchableOpacity
+                    onPress={handleStepsFromPhotoPress}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retake steps photo"
+                  >
+                    <Text style={styles.retakeBannerAction}>Retake</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {stepsOcrState.status === 'manual_fallback' && (
+                <Text style={styles.manualFallbackHint}>
+                  Couldn't read steps automatically — enter the value above manually.
+                </Text>
+              )}
+
               <FieldLabel>Weight (kg)</FieldLabel>
               <View style={styles.weightRow}>
                 <TextInput
@@ -2327,6 +2471,21 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bodyRegular,
     color: T.muted,
     marginTop: 6,
+  },
+  btnOutline: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: T.border,
+    borderRadius: 8,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  btnOutlineText: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodySemiBold,
+    fontWeight: '600',
+    color: T.primary,
   },
   photoRow: {
     flexDirection: 'row',
