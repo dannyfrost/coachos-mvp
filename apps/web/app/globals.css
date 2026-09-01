@@ -48,15 +48,20 @@ html, body {
   width: 100%;
 }
 
-/* Coach shell: sidebar becomes an off-canvas drawer below tablet width. */
+/* Coach shell: sidebar becomes an off-canvas drawer below tablet width,
+   then a bottom bar below phone width. */
 .shell-hamburger {
   display: none;
 }
 .shell-overlay {
   display: none;
 }
+.shell-bottombar {
+  display: none;
+}
 
-@media (max-width: 860px) {
+/* 768-1099px: overlay drawer (COACHOS.md's spec range — was max-width:860px) */
+@media (max-width: 1099px) {
   .shell-sidebar {
     position: fixed;
     top: 0;
@@ -64,7 +69,7 @@ html, body {
     bottom: 0;
     z-index: 40;
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
+    transition: transform 0.18s ease;
   }
   .shell-sidebar.is-open {
     transform: translateX(0);
@@ -78,5 +83,38 @@ html, body {
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
     z-index: 30;
+  }
+}
+
+/* <768px: bottom bar replaces the sidebar/drawer entirely */
+@media (max-width: 767px) {
+  .shell-sidebar {
+    display: none;
+  }
+  .shell-hamburger {
+    display: none;
+  }
+  .shell-bottombar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: #ffffff;
+    border-top: 1px solid rgba(25,28,30,0.07);
+  }
+  .page-pad {
+    padding-bottom: 76px; /* clear the fixed bottom bar */
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .page-pad {
+    animation: page-rise 0.18s ease both;
+  }
+  @keyframes page-rise {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
   }
 }

@@ -95,6 +95,16 @@ function TeamIcon({ active }: IconProps) {
   )
 }
 
+function MoreIcon({ active }: IconProps) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="5" cy="12" r="1.5" fill={iconStroke(active)} stroke="none" />
+      <circle cx="12" cy="12" r="1.5" fill={iconStroke(active)} stroke="none" />
+      <circle cx="19" cy="12" r="1.5" fill={iconStroke(active)} stroke="none" />
+    </svg>
+  )
+}
+
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', href: '/dashboard', Icon: DashboardIcon },
   { id: 'clients', label: 'Clients', href: '/clients', Icon: ClientsIcon },
@@ -105,6 +115,17 @@ const NAV: NavItem[] = [
   { id: 'reports', label: 'Reports', href: '/reports', Icon: ReportsIcon },
   { id: 'settings', label: 'Settings', href: '/settings', Icon: SettingsIcon },
 ]
+
+// <768px bottom bar: a tight subset of NAV, relabeled for a thumb-width tab bar.
+const BOTTOM_NAV: NavItem[] = [
+  { id: 'dashboard', label: 'Home', href: '/dashboard', Icon: DashboardIcon },
+  { id: 'clients', label: 'Clients', href: '/clients', Icon: ClientsIcon },
+  { id: 'messages', label: 'Inbox', href: '/messages', Icon: MessagesIcon },
+  { id: 'alerts', label: 'Alerts', href: '/alerts', Icon: AlertsIcon },
+]
+
+// Remaining NAV entries, reached via the bottom bar's "More" sheet.
+const MORE_NAV: NavItem[] = NAV.filter(item => !BOTTOM_NAV.some(b => b.id === item.id))
 
 export function Shell({
   coachName,
@@ -120,9 +141,11 @@ export function Shell({
   const pathname = usePathname()
   const router = useRouter()
   const [navOpen, setNavOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   useEffect(() => {
     setNavOpen(false)
+    setMoreOpen(false)
   }, [pathname])
 
   const title = pathname.startsWith('/clients/')
@@ -200,11 +223,10 @@ export function Shell({
                   gap: 10,
                   width: '100%',
                   padding: '10px 12px',
-                  borderRadius: 8,
+                  borderRadius: 2,
                   border: 'none',
                   cursor: item.soon ? 'default' : 'pointer',
-                  background: active ? T.white : 'transparent',
-                  boxShadow: active ? shadow.card : 'none',
+                  background: 'transparent',
                   marginBottom: 2,
                   textDecoration: 'none',
                   opacity: item.soon ? 0.5 : 1,
@@ -215,9 +237,12 @@ export function Shell({
                   style={{
                     flex: 1,
                     textAlign: 'left',
+                    fontFamily: font.body,
                     fontSize: 13,
                     fontWeight: active ? 700 : 500,
                     color: active ? T.primary : T.onSurfaceVar,
+                    textDecoration: active ? 'underline' : 'none',
+                    textUnderlineOffset: 3,
                   }}
                 >
                   {item.label}
@@ -227,9 +252,10 @@ export function Shell({
                     style={{
                       background: T.surfaceHigh,
                       color: T.muted,
+                      fontFamily: font.body,
                       fontSize: 9,
                       fontWeight: 700,
-                      borderRadius: 10,
+                      borderRadius: 2,
                       padding: '1px 6px',
                     }}
                   >
@@ -256,6 +282,128 @@ export function Shell({
           </div>
         </div>
       </div>
+
+      <nav
+        className="shell-bottombar"
+        style={{
+          height: 60,
+          alignItems: 'stretch',
+          padding: '0 4px',
+        }}
+      >
+        {BOTTOM_NAV.map(item => {
+          const active = pathname.startsWith(item.href)
+          return (
+            <a
+              key={item.id}
+              href={item.href}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 2,
+                textDecoration: 'none',
+              }}
+            >
+              <item.Icon active={active} />
+              <span
+                style={{
+                  fontFamily: font.body,
+                  fontSize: 10,
+                  fontWeight: active ? 700 : 500,
+                  color: active ? T.primary : T.onSurfaceVar,
+                  textDecoration: active ? 'underline' : 'none',
+                  textUnderlineOffset: 3,
+                }}
+              >
+                {item.label}
+              </span>
+            </a>
+          )
+        })}
+        <button
+          onClick={() => setMoreOpen(v => !v)}
+          aria-label="More"
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          <MoreIcon active={moreOpen} />
+          <span
+            style={{
+              fontFamily: font.body,
+              fontSize: 10,
+              fontWeight: moreOpen ? 700 : 500,
+              color: moreOpen ? T.primary : T.onSurfaceVar,
+              textDecoration: moreOpen ? 'underline' : 'none',
+              textUnderlineOffset: 3,
+            }}
+          >
+            More
+          </span>
+        </button>
+      </nav>
+
+      <div
+        className={`shell-overlay${moreOpen ? ' is-open' : ''}`}
+        onClick={() => setMoreOpen(false)}
+      />
+      {moreOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 60,
+            zIndex: 41,
+            background: T.white,
+            borderTop: `1px solid ${T.border}`,
+            borderRadius: '2px 2px 0 0',
+            padding: '8px 8px 4px',
+          }}
+        >
+          {MORE_NAV.map(item => {
+            const active = pathname.startsWith(item.href)
+            return (
+              <a
+                key={item.id}
+                href={item.href}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '12px 14px',
+                  textDecoration: 'none',
+                }}
+              >
+                <item.Icon active={active} />
+                <span
+                  style={{
+                    fontFamily: font.body,
+                    fontSize: 14,
+                    fontWeight: active ? 700 : 500,
+                    color: active ? T.primary : T.onSurfaceVar,
+                    textDecoration: active ? 'underline' : 'none',
+                    textUnderlineOffset: 3,
+                  }}
+                >
+                  {item.label}
+                </span>
+              </a>
+            )
+          })}
+        </div>
+      )}
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div
