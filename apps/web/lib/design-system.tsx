@@ -24,14 +24,14 @@ export const T = {
 } as const
 
 export const shadow = {
-  card: '0 1px 3px rgba(25,28,30,0.06), 0 4px 16px rgba(25,28,30,0.04)',
-  float: '0 8px 32px rgba(25,28,30,0.10)',
-  sidebar: '1px 0 0 rgba(25,28,30,0.06)',
+  card: 'none',
+  float: 'none',
+  sidebar: 'none',
 }
 
 export const font = {
-  heading: 'Manrope, sans-serif',
-  body: 'Inter, sans-serif',
+  heading: 'var(--font-fraunces), Georgia, serif',
+  body: 'var(--font-public-sans), -apple-system, sans-serif',
 }
 
 export function Card({
@@ -42,7 +42,7 @@ export function Card({
   style?: React.CSSProperties
 }) {
   return (
-    <div style={{ background: T.white, borderRadius: 12, padding: 20, boxShadow: shadow.card, ...style }}>
+    <div style={{ background: T.white, borderRadius: 2, padding: 20, ...style }}>
       {children}
     </div>
   )
@@ -75,7 +75,7 @@ export function Badge({ status, small, labelOverride }: { status: string; small?
         display: 'inline-flex',
         alignItems: 'center',
         padding: small ? '2px 8px' : '3px 10px',
-        borderRadius: 20,
+        borderRadius: 2,
         background: s.bg,
         color: s.text,
         fontSize: small ? 10 : 11,
@@ -83,6 +83,33 @@ export function Badge({ status, small, labelOverride }: { status: string; small?
         letterSpacing: '0.04em',
         fontFamily: font.body,
         whiteSpace: 'nowrap',
+      }}
+    >
+      {labelOverride ?? s.label}
+    </span>
+  )
+}
+
+export function StatusWord({
+  status,
+  labelOverride,
+  style = {},
+}: {
+  status: string
+  labelOverride?: string
+  style?: React.CSSProperties
+}) {
+  const s = BADGE_MAP[status] || { bg: '#f3f4f6', text: T.muted, label: status }
+  return (
+    <span
+      style={{
+        fontFamily: font.body,
+        fontWeight: 600,
+        fontSize: 13,
+        color: s.text,
+        textDecoration: 'underline',
+        textUnderlineOffset: 3,
+        ...style,
       }}
     >
       {labelOverride ?? s.label}
@@ -136,7 +163,6 @@ export function Btn({
       background: `linear-gradient(135deg, ${T.primary}, ${T.primaryMid})`,
       color: '#fff',
       border: 'none',
-      boxShadow: '0 2px 8px rgba(0,72,141,0.25)',
     },
     secondary: { background: T.surfaceHigh, color: T.primary, border: 'none' },
     ghost: { background: 'transparent', color: T.primary, border: 'none' },
@@ -150,7 +176,7 @@ export function Btn({
       disabled={disabled}
       style={{
         padding: small ? '5px 12px' : '8px 16px',
-        borderRadius: 8,
+        borderRadius: 2,
         cursor: disabled ? 'not-allowed' : 'pointer',
         fontFamily: font.body,
         fontWeight: 600,
@@ -209,7 +235,7 @@ export const inputStyle: React.CSSProperties = {
   background: T.surfaceLow,
   border: 'none',
   borderBottom: `2px solid ${T.primary}`,
-  borderRadius: '8px 8px 0 0',
+  borderRadius: '2px 2px 0 0',
   fontFamily: font.body,
   fontSize: 14,
   color: T.onSurface,
@@ -223,8 +249,8 @@ export function Avatar({ initials, size = 36 }: { initials: string; size?: numbe
       style={{
         width: size,
         height: size,
-        borderRadius: '50%',
-        background: `linear-gradient(135deg,${T.primary},${T.primaryMid})`,
+        borderRadius: 2,
+        background: T.primary,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
