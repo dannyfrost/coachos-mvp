@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { T, shadow, font, Avatar, initialsOf } from '../../../lib/design-system'
+import { T, font, Avatar, initialsOf } from '../../../lib/design-system'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
 
 type IconProps = { active: boolean }
@@ -148,6 +148,16 @@ export function Shell({
     setMoreOpen(false)
   }, [pathname])
 
+  useEffect(() => {
+    function handleResize() {
+      if (window.innerWidth >= 768) {
+        setMoreOpen(false)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const title = pathname.startsWith('/clients/')
     ? 'Client Profile'
     : pathname.startsWith('/clients')
@@ -187,7 +197,7 @@ export function Shell({
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: shadow.sidebar,
+          borderRight: `1px solid ${T.border}`,
         }}
       >
         <div style={{ padding: '24px 20px 20px' }}>

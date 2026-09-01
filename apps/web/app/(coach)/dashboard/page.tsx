@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@coaching/supabase/ssr-server'
 import DashboardClient from './_components/DashboardClient'
+import type { AttentionItem } from './_components/NeedsAttentionPanel'
 
 type FlashCardData = {
   id: string
@@ -24,14 +25,6 @@ type ClientData = {
 type WeekLogEntry = { log_date: string; weight: number | null; steps: number | null }
 
 type PlanInfo = { title: string; type: string; assigned_at: string; week: number }
-
-type AttentionItem = {
-  id: string
-  client_id: string
-  trigger_date: string
-  level: '24h' | '48h' | '72h'
-  clientName: string
-}
 
 function weekNumberSince(assignedAt: string): number {
   const assigned = new Date(assignedAt)

@@ -42,7 +42,7 @@ export function Card({
   style?: React.CSSProperties
 }) {
   return (
-    <div style={{ background: T.white, borderRadius: 2, padding: 20, ...style }}>
+    <div style={{ background: T.white, borderRadius: 2, border: `1px solid ${T.border}`, padding: 20, ...style }}>
       {children}
     </div>
   )

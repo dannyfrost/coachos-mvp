@@ -113,9 +113,6 @@ html, body {
 
 /* <768px: bottom bar replaces the sidebar/drawer entirely */
 @media (max-width: 767px) {
-  .shell-sidebar {
-    display: none;
-  }
   .shell-hamburger {
     display: none;
   }
@@ -146,7 +143,7 @@ html, body {
     animation: page-rise 0.18s ease both;
   }
   @keyframes page-rise {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: none; }
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 }

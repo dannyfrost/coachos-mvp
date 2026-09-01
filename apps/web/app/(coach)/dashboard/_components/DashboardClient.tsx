@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import FlashCard from './FlashCard'
 import NeedsAttentionPanel, { AttentionItem } from './NeedsAttentionPanel'
-import { T, shadow, font, Card, SectionLabel } from '../../../../lib/design-system'
+import { T, font, Card, SectionLabel } from '../../../../lib/design-system'
 
 type FlashCardData = {
   id: string
@@ -129,7 +129,7 @@ export default function DashboardClient({
           style={{
             background: T.amberBg,
             color: T.amber,
-            borderRadius: 10,
+            borderRadius: 2,
             padding: '10px 16px',
             marginBottom: 20,
             fontSize: 13,
@@ -161,9 +161,8 @@ export default function DashboardClient({
                 alignItems: 'center',
                 gap: 8,
                 background: T.white,
-                borderRadius: 8,
+                borderRadius: 2,
                 padding: '7px 12px',
-                boxShadow: shadow.card,
                 maxWidth: 240,
               }}
             >
@@ -181,7 +180,7 @@ export default function DashboardClient({
                   onClick={() => setStatusFilter(f)}
                   style={{
                     padding: '5px 12px',
-                    borderRadius: 20,
+                    borderRadius: 2,
                     border: 'none',
                     cursor: 'pointer',
                     fontSize: 12,
