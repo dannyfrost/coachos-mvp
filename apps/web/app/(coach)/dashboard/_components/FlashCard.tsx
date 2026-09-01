@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
-import { T, shadow, font, Badge, Btn, Avatar, initialsOf } from '../../../../lib/design-system'
+import { T, shadow, font, StatusWord, Btn, Avatar, initialsOf } from '../../../../lib/design-system'
 
 type FlashCardData = {
   id: string
@@ -16,6 +16,10 @@ type FlashCardData = {
   computed_at: string
 }
 
+type WeekLogEntry = { log_date: string; weight: number | null; steps: number | null }
+
+type PlanInfo = { title: string; type: string; week: number }
+
 const BORDER_COLOR: Record<string, string> = {
   green: T.successMid,
   yellow: T.amberMid,
@@ -23,13 +27,49 @@ const BORDER_COLOR: Record<string, string> = {
   paused: '#d1d5db',
 }
 
+function SevenDayStrip({ weekLogs }: { weekLogs: WeekLogEntry[] }) {
+  const today = new Date()
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today)
+    d.setDate(d.getDate() - (6 - i))
+    return d.toISOString().slice(0, 10)
+  })
+  const byDate = new Map(weekLogs.map(l => [l.log_date, l]))
+  const maxSteps = Math.max(1, ...weekLogs.map(l => l.steps ?? 0))
+
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 28 }}>
+      {days.map(date => {
+        const log = byDate.get(date)
+        const hasLog = !!log
+        const stepsHeight = log?.steps ? Math.max(4, Math.round((log.steps / maxSteps) * 24)) : 4
+        return (
+          <div
+            key={date}
+            style={{
+              width: 10,
+              height: stepsHeight,
+              borderRadius: 1,
+              background: hasLog ? T.primary : T.surfaceHigh,
+            }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 export default function FlashCard({
   card: initialCard,
   clientName,
+  weekLogs,
+  plan,
   onRefresh,
 }: {
   card: FlashCardData
   clientName: string
+  weekLogs: WeekLogEntry[]
+  plan: PlanInfo | undefined
   onRefresh: (card: FlashCardData) => void
 }) {
   const [card, setCard] = useState(initialCard)
@@ -39,8 +79,6 @@ export default function FlashCard({
   const [notesValue, setNotesValue] = useState(card.notes ?? '')
   const [notesSaving, setNotesSaving] = useState(false)
   const [notesSaved, setNotesSaved] = useState(false)
-
-  const isStale = new Date(card.computed_at) < new Date(Date.now() - 24 * 60 * 60 * 1000)
 
   async function handleRefresh() {
     setLoading(true)
@@ -84,11 +122,16 @@ export default function FlashCard({
     }
   }
 
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const latestLog =
+    weekLogs.find(l => l.log_date === todayStr) ??
+    [...weekLogs].sort((a, b) => (a.log_date < b.log_date ? 1 : -1))[0]
+
   return (
     <div
       style={{
         background: T.white,
-        borderRadius: 14,
+        borderRadius: 2,
         overflow: 'hidden',
         boxShadow: shadow.card,
         borderLeft: `4px solid ${BORDER_COLOR[card.status] ?? '#d1d5db'}`,
@@ -102,55 +145,42 @@ export default function FlashCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Avatar initials={initialsOf(clientName)} />
             <div>
-              <div style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 15, color: T.onSurface }}>{clientName}</div>
-              <div style={{ fontSize: 11, color: T.muted }}>
-                {card.last_log_at ? `Last log ${new Date(card.last_log_at).toLocaleDateString()}` : 'No logs yet'}
+              <div style={{ fontFamily: font.heading, fontWeight: 700, fontSize: 16, color: T.onSurface }}>
+                {clientName}
               </div>
+              {plan && (
+                <div style={{ fontFamily: font.body, fontSize: 11, color: T.muted }}>
+                  {plan.title} — week {plan.week}
+                </div>
+              )}
             </div>
           </div>
-          <Badge status={card.status} small />
+          <StatusWord status={card.status} />
         </div>
       </div>
 
       <div style={{ padding: '12px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-        {isStale && (
-          <div
-            style={{
-              fontSize: 11,
-              color: T.amber,
-              background: T.amberBg,
-              padding: '4px 8px',
-              borderRadius: 6,
-              marginBottom: 10,
-              fontWeight: 600,
-            }}
-          >
-            Stale — computed &gt;24h ago
-          </div>
-        )}
-
-        {card.food_summary && (
-          <div style={{ background: T.surfaceLow, borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 3 }}>
-              Meals
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 18 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>
+                Weight
+              </div>
+              <div style={{ fontFamily: font.heading, fontWeight: 700, fontSize: 18, color: T.onSurface }}>
+                {latestLog?.weight != null ? `${latestLog.weight} kg` : '—'}
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: T.onSurfaceVar, lineHeight: 1.5 }}>{card.food_summary}</div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>
+                Steps
+              </div>
+              <div style={{ fontFamily: font.heading, fontWeight: 700, fontSize: 18, color: T.onSurface }}>
+                {latestLog?.steps != null ? latestLog.steps.toLocaleString() : '—'}
+              </div>
+            </div>
           </div>
-        )}
-
-        {card.reason && (
-          <div
-            style={{
-              fontSize: 12,
-              color: card.status === 'red' ? T.red : card.status === 'yellow' ? T.amber : T.onSurfaceVar,
-              lineHeight: 1.5,
-              marginBottom: 10,
-              fontWeight: card.status !== 'green' ? 600 : 400,
-            }}
-          >
-            {card.reason}
-          </div>
-        )}
+          <SevenDayStrip weekLogs={weekLogs} />
+        </div>
 
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
@@ -163,7 +193,7 @@ export default function FlashCard({
             style={{
               width: '100%',
               padding: '8px 10px',
-              borderRadius: 8,
+              borderRadius: 2,
               border: 'none',
               background: T.surfaceLow,
               borderBottom: `2px solid ${T.primary}`,
@@ -188,7 +218,7 @@ export default function FlashCard({
         <div style={{ marginTop: 'auto', display: 'flex', gap: 6 }}>
           <a href={`/clients/${card.client_id}`} style={{ flex: 1, textDecoration: 'none' }}>
             <Btn small variant="primary" full>
-              Profile
+              Open file
             </Btn>
           </a>
           <Btn small variant="secondary" onClick={handleRefresh} disabled={loading} style={{ flex: 1 }}>

@@ -28,17 +28,34 @@ type SubscriptionData = {
   status: string
 } | null
 
+type WeekLogEntry = { log_date: string; weight: number | null; steps: number | null }
+
+type PlanInfo = { title: string; type: string; assigned_at: string; week: number }
+
 type Props = {
   flashCards: FlashCardData[]
   clients: ClientData[]
   missingCheckIns: number
   subscription: SubscriptionData
+  weekLogsByClientId: Record<string, WeekLogEntry[]>
+  planByClientId: Record<string, PlanInfo>
+  unreadCount: number
+  adherencePct: number
 }
 
 const SEVERITY_ORDER: Record<string, number> = { red: 0, yellow: 1, green: 2, paused: 3 }
 const FILTERS = ['all', 'red', 'yellow', 'green', 'paused'] as const
 
-export default function DashboardClient({ flashCards: initialCards, clients, missingCheckIns, subscription }: Props) {
+export default function DashboardClient({
+  flashCards: initialCards,
+  clients,
+  missingCheckIns,
+  subscription,
+  weekLogsByClientId,
+  planByClientId,
+  unreadCount,
+  adherencePct,
+}: Props) {
   const [cards, setCards] = useState<FlashCardData[]>(initialCards)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<(typeof FILTERS)[number]>('all')
@@ -98,6 +115,8 @@ export default function DashboardClient({ flashCards: initialCards, clients, mis
     { label: 'Red', value: String(stats.red), color: T.redMid },
     { label: 'Yellow', value: String(stats.yellow), color: T.amberMid },
     { label: 'Green', value: String(stats.green), color: T.successMid },
+    { label: 'Unread Messages', value: String(unreadCount), color: T.primary },
+    { label: 'Adherence', value: `${adherencePct}%`, color: T.successMid },
   ]
 
   return (
@@ -181,7 +200,16 @@ export default function DashboardClient({ flashCards: initialCards, clients, mis
           {sortedAndFiltered.map(card => {
             const client = clientMap.get(card.client_id)
             const clientName = client?.full_name?.trim() || 'Unknown'
-            return <FlashCard key={card.id} card={card} clientName={clientName} onRefresh={handleRefresh} />
+            return (
+              <FlashCard
+                key={card.id}
+                card={card}
+                clientName={clientName}
+                weekLogs={weekLogsByClientId[card.client_id] ?? []}
+                plan={planByClientId[card.client_id]}
+                onRefresh={handleRefresh}
+              />
+            )
           })}
         </div>
       )}

@@ -21,6 +21,17 @@ type ClientData = {
   full_name: string | null
 }
 
+type WeekLogEntry = { log_date: string; weight: number | null; steps: number | null }
+
+type PlanInfo = { title: string; type: string; assigned_at: string; week: number }
+
+function weekNumberSince(assignedAt: string): number {
+  const assigned = new Date(assignedAt)
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - assigned.getTime()) / (1000 * 60 * 60 * 24))
+  return Math.max(1, Math.floor(diffDays / 7) + 1)
+}
+
 export default async function DashboardPage() {
   const cookieStore = cookies()
   const supabase = createSupabaseServerClient({
@@ -50,8 +61,17 @@ export default async function DashboardPage() {
   }
 
   const today = new Date().toISOString().slice(0, 10)
+  const sevenDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-  const [flashCardsRes, clientsRes, dailyLogsRes, subscriptionRes] = await Promise.all([
+  const [
+    flashCardsRes,
+    clientsRes,
+    dailyLogsRes,
+    subscriptionRes,
+    weekLogsRes,
+    planAssignmentsRes,
+    unreadMessagesRes,
+  ] = await Promise.all([
     supabase
       .from('flash_cards')
       .select(
@@ -67,6 +87,20 @@ export default async function DashboardPage() {
       .select('plan_name, current_period_end, status')
       .eq('coach_id', user.id)
       .maybeSingle(),
+    supabase
+      .from('daily_logs')
+      .select('client_id, log_date, weight, steps')
+      .gte('log_date', sevenDaysAgo)
+      .lte('log_date', today),
+    supabase
+      .from('plan_assignments')
+      .select('client_id, plan_id, assigned_at, plans!plan_assignments_plan_id_fkey(title, type)')
+      .eq('status', 'active'),
+    supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('recipient_id', user.id)
+      .is('read_at', null),
   ])
 
   const flashCards: FlashCardData[] = (flashCardsRes.data ?? []).map(c => ({
@@ -98,12 +132,45 @@ export default async function DashboardPage() {
     .filter(c => c.status === 'active')
     .filter(c => !todayLogClientIds.has(c.id)).length
 
+  const activeClientCount = clients.filter(c => c.status === 'active').length
+  const adherencePct = activeClientCount > 0
+    ? Math.round(((activeClientCount - missingCheckIns) / activeClientCount) * 100)
+    : 0
+
+  const weekLogsByClient = new Map<string, WeekLogEntry[]>()
+  for (const row of weekLogsRes.data ?? []) {
+    const list = weekLogsByClient.get(row.client_id) ?? []
+    list.push({ log_date: row.log_date, weight: row.weight, steps: row.steps })
+    weekLogsByClient.set(row.client_id, list)
+  }
+
+  const planByClient = new Map<string, PlanInfo>()
+  for (const row of planAssignmentsRes.data ?? []) {
+    const plan = row.plans as { title: string; type: string } | null
+    if (!plan) continue
+    const existing = planByClient.get(row.client_id)
+    if (!existing || row.assigned_at > existing.assigned_at) {
+      planByClient.set(row.client_id, {
+        title: plan.title,
+        type: plan.type,
+        assigned_at: row.assigned_at,
+        week: weekNumberSince(row.assigned_at),
+      })
+    }
+  }
+
+  const unreadCount = unreadMessagesRes.count ?? 0
+
   return (
     <DashboardClient
       flashCards={flashCards}
       clients={clients}
       missingCheckIns={missingCheckIns}
       subscription={subscriptionRes.data ?? null}
+      weekLogsByClientId={Object.fromEntries(weekLogsByClient)}
+      planByClientId={Object.fromEntries(planByClient)}
+      unreadCount={unreadCount}
+      adherencePct={adherencePct}
     />
   )
 }
