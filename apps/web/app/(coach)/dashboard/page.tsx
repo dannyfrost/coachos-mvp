@@ -25,6 +25,14 @@ type WeekLogEntry = { log_date: string; weight: number | null; steps: number | n
 
 type PlanInfo = { title: string; type: string; assigned_at: string; week: number }
 
+type AttentionItem = {
+  id: string
+  client_id: string
+  trigger_date: string
+  level: '24h' | '48h' | '72h'
+  clientName: string
+}
+
 function weekNumberSince(assignedAt: string): number {
   const assigned = new Date(assignedAt)
   const now = new Date()
@@ -71,6 +79,7 @@ export default async function DashboardPage() {
     weekLogsRes,
     planAssignmentsRes,
     unreadMessagesRes,
+    attentionRes,
   ] = await Promise.all([
     supabase
       .from('flash_cards')
@@ -101,6 +110,14 @@ export default async function DashboardPage() {
       .select('id', { count: 'exact', head: true })
       .eq('recipient_id', user.id)
       .is('read_at', null),
+    supabase
+      .from('absence_events')
+      .select(
+        'id, client_id, trigger_date, level, action_taken, clients!absence_events_client_coach_fkey(platform_users(full_name))'
+      )
+      .neq('action_taken', 'resolved')
+      .order('level', { ascending: false }) // '72h' > '48h' > '24h' lexically descending — matches urgency (most urgent first)
+      .limit(6),
   ])
 
   const flashCards: FlashCardData[] = (flashCardsRes.data ?? []).map(c => ({
@@ -161,6 +178,17 @@ export default async function DashboardPage() {
 
   const unreadCount = unreadMessagesRes.count ?? 0
 
+  const attentionItems: AttentionItem[] = (attentionRes.data ?? []).map(e => {
+    const client = e.clients as { platform_users: { full_name: string } | null } | null
+    return {
+      id: e.id,
+      client_id: e.client_id,
+      trigger_date: e.trigger_date,
+      level: e.level,
+      clientName: client?.platform_users?.full_name ?? 'Unknown',
+    }
+  })
+
   return (
     <DashboardClient
       flashCards={flashCards}
@@ -171,6 +199,7 @@ export default async function DashboardPage() {
       planByClientId={Object.fromEntries(planByClient)}
       unreadCount={unreadCount}
       adherencePct={adherencePct}
+      attentionItems={attentionItems}
     />
   )
 }

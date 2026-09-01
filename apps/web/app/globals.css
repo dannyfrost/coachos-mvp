@@ -43,6 +43,28 @@ html, body {
   }
 }
 
+/* Dashboard: main content + "needs attention" side panel at wide viewports.
+   Below 1100px the panel column is dropped entirely — that space goes to
+   stacked content instead. Mirrors the shell's 1099/1100 breakpoint. */
+.dashboard-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+.dashboard-main {
+  flex: 1;
+  min-width: 0;
+}
+.dashboard-attention-col {
+  width: 280px;
+  flex-shrink: 0;
+}
+@media (max-width: 1099px) {
+  .dashboard-attention-col {
+    display: none;
+  }
+}
+
 /* Login/signup card: fills width on phones instead of a fixed pixel size. */
 .auth-card {
   width: 100%;

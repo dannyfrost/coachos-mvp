@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import FlashCard from './FlashCard'
+import NeedsAttentionPanel, { AttentionItem } from './NeedsAttentionPanel'
 import { T, shadow, font, Card, SectionLabel } from '../../../../lib/design-system'
 
 type FlashCardData = {
@@ -41,6 +42,7 @@ type Props = {
   planByClientId: Record<string, PlanInfo>
   unreadCount: number
   adherencePct: number
+  attentionItems: AttentionItem[]
 }
 
 const SEVERITY_ORDER: Record<string, number> = { red: 0, yellow: 1, green: 2, paused: 3 }
@@ -55,6 +57,7 @@ export default function DashboardClient({
   planByClientId,
   unreadCount,
   adherencePct,
+  attentionItems,
 }: Props) {
   const [cards, setCards] = useState<FlashCardData[]>(initialCards)
   const [search, setSearch] = useState('')
@@ -137,82 +140,90 @@ export default function DashboardClient({
         </div>
       )}
 
-      <div className="grid-stats" style={{ marginBottom: 24 }}>
-        {kpis.map(kpi => (
-          <Card key={kpi.label} style={{ padding: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>
-              {kpi.label}
-            </div>
-            <div style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 26, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
-          </Card>
-        ))}
-      </div>
+      <div className="dashboard-layout">
+        <div className="dashboard-main">
+          <div className="grid-stats" style={{ marginBottom: 24 }}>
+            {kpis.map(kpi => (
+              <Card key={kpi.label} style={{ padding: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>
+                  {kpi.label}
+                </div>
+                <div style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 26, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
+              </Card>
+            ))}
+          </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <SectionLabel>Flash Cards</SectionLabel>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            background: T.white,
-            borderRadius: 8,
-            padding: '7px 12px',
-            boxShadow: shadow.card,
-            maxWidth: 240,
-          }}
-        >
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search clients..."
-            style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 13, color: T.onSurface, fontFamily: font.body, width: '100%' }}
-          />
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {FILTERS.map(f => (
-            <button
-              key={f}
-              onClick={() => setStatusFilter(f)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+            <SectionLabel>Flash Cards</SectionLabel>
+            <div
               style={{
-                padding: '5px 12px',
-                borderRadius: 20,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 12,
-                fontFamily: font.body,
-                fontWeight: 600,
-                transition: 'all 0.15s',
-                background: statusFilter === f ? T.primary : T.surfaceHigh,
-                color: statusFilter === f ? '#fff' : T.onSurfaceVar,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: T.white,
+                borderRadius: 8,
+                padding: '7px 12px',
+                boxShadow: shadow.card,
+                maxWidth: 240,
               }}
             >
-              {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-            </button>
-          ))}
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search clients..."
+                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 13, color: T.onSurface, fontFamily: font.body, width: '100%' }}
+              />
+            </div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              {FILTERS.map(f => (
+                <button
+                  key={f}
+                  onClick={() => setStatusFilter(f)}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: 20,
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontFamily: font.body,
+                    fontWeight: 600,
+                    transition: 'all 0.15s',
+                    background: statusFilter === f ? T.primary : T.surfaceHigh,
+                    color: statusFilter === f ? '#fff' : T.onSurfaceVar,
+                  }}
+                >
+                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {sortedAndFiltered.length === 0 ? (
+            <Card style={{ textAlign: 'center', color: T.muted, fontSize: 13, padding: '40px 24px' }}>No clients match your filter.</Card>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+              {sortedAndFiltered.map(card => {
+                const client = clientMap.get(card.client_id)
+                const clientName = client?.full_name?.trim() || 'Unknown'
+                return (
+                  <FlashCard
+                    key={card.id}
+                    card={card}
+                    clientName={clientName}
+                    weekLogs={weekLogsByClientId[card.client_id] ?? []}
+                    plan={planByClientId[card.client_id]}
+                    onRefresh={handleRefresh}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="dashboard-attention-col">
+          <NeedsAttentionPanel items={attentionItems} />
         </div>
       </div>
-
-      {sortedAndFiltered.length === 0 ? (
-        <Card style={{ textAlign: 'center', color: T.muted, fontSize: 13, padding: '40px 24px' }}>No clients match your filter.</Card>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
-          {sortedAndFiltered.map(card => {
-            const client = clientMap.get(card.client_id)
-            const clientName = client?.full_name?.trim() || 'Unknown'
-            return (
-              <FlashCard
-                key={card.id}
-                card={card}
-                clientName={clientName}
-                weekLogs={weekLogsByClientId[card.client_id] ?? []}
-                plan={planByClientId[card.client_id]}
-                onRefresh={handleRefresh}
-              />
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }
