@@ -56,6 +56,9 @@ html, body {
 .shell-overlay {
   display: none;
 }
+.shell-overlay-more {
+  display: none;
+}
 .shell-bottombar {
   display: none;
 }
@@ -103,6 +106,13 @@ html, body {
     z-index: 40;
     background: #ffffff;
     border-top: 1px solid rgba(25,28,30,0.07);
+  }
+  .shell-overlay-more.is-open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 30;
   }
   .page-pad {
     padding-bottom: 76px; /* clear the fixed bottom bar */

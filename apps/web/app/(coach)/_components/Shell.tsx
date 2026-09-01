@@ -355,7 +355,7 @@ export function Shell({
       </nav>
 
       <div
-        className={`shell-overlay${moreOpen ? ' is-open' : ''}`}
+        className={`shell-overlay-more${moreOpen ? ' is-open' : ''}`}
         onClick={() => setMoreOpen(false)}
       />
       {moreOpen && (
