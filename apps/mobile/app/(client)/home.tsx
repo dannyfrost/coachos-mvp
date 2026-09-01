@@ -1070,18 +1070,6 @@ export default function HomeScreen() {
         handlePickPhoto();
       },
     },
-    {
-      id: 'questions',
-      label: 'Coach Questions',
-      iconKey: 'chat',
-      done: (todayLog?.questions ?? null) !== null || (questions.trim().length > 0 && submitSuccess),
-      optional: false,
-      chipBg: '#ede9fe',
-      chipColor: '#6d28d9',
-      onTap: () => {
-        questionsInputRef.current?.focus();
-      },
-    },
   ];
 
   const doneCount = tasks.filter((t) => t.done).length;
