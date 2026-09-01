@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
-import { T, shadow, font, Card, Badge, Btn, Avatar, initialsOf } from '../../../../../lib/design-system'
+import { T, font, Card, Badge, StatusWord, Btn, Avatar, initialsOf } from '../../../../../lib/design-system'
 
 type UserStatus = 'pending' | 'active' | 'paused' | 'suspended' | 'banned' | 'deactivated'
 type FlashStatus = 'green' | 'yellow' | 'red'
@@ -239,7 +239,7 @@ export default function ClientProfileClient({
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Badge status={displayStatus} />
+              <StatusWord status={displayStatus} />
               {displayStatus === 'active' && (
                 <Btn small variant="danger" onClick={handlePause} disabled={actionLoading}>
                   {actionLoading ? '...' : 'Pause'}
@@ -263,7 +263,7 @@ export default function ClientProfileClient({
             </div>
           </div>
           {confirmingDeactivate && (
-            <div style={{ marginTop: 12, padding: 12, background: T.redBg, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ marginTop: 12, padding: 12, background: T.redBg, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, color: T.red, fontWeight: 600 }}>
                 This marks the client as deactivated. Their data is preserved and they can be reactivated anytime. Confirm?
               </span>
@@ -279,8 +279,8 @@ export default function ClientProfileClient({
           )}
           {actionError && <p style={{ color: T.red, fontSize: 12, marginTop: 10 }}>{actionError}</p>}
           {subscription && (
-            <div style={{ marginTop: 14, padding: 12, background: T.surfaceLow, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Badge status={subscription.status} small />
+            <div style={{ marginTop: 14, padding: 12, background: T.surfaceLow, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <StatusWord status={subscription.status} />
               <span style={{ fontSize: 12, color: T.onSurfaceVar }}>
                 {fmtDate(subscription.start_date)} – {fmtDate(subscription.end_date)}
               </span>
@@ -291,15 +291,14 @@ export default function ClientProfileClient({
         <div
           style={{
             background: T.white,
-            borderRadius: 12,
+            borderRadius: 2,
             overflow: 'hidden',
-            boxShadow: shadow.card,
             borderLeft: `4px solid ${flashCard ? (BORDER_COLOR[flashCard.status] ?? '#d1d5db') : '#d1d5db'}`,
           }}
         >
           <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Flash Card</span>
-            {flashCard && <Badge status={flashCard.status} small />}
+            {flashCard && <StatusWord status={flashCard.status} />}
           </div>
           <div style={{ padding: '12px 16px' }}>
             {flashCard === null ? (
@@ -320,7 +319,7 @@ export default function ClientProfileClient({
                     border: 'none',
                     background: T.surfaceLow,
                     borderBottom: `2px solid ${T.primary}`,
-                    borderRadius: '6px 6px 0 0',
+                    borderRadius: '2px 2px 0 0',
                     padding: '7px 10px',
                     fontFamily: font.body,
                     fontSize: 12,
@@ -342,7 +341,7 @@ export default function ClientProfileClient({
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 20, padding: '10px 16px', background: T.surfaceLow, borderRadius: 10, marginBottom: 18, fontSize: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 20, padding: '10px 16px', background: T.surfaceLow, borderRadius: 2, marginBottom: 18, fontSize: 12, flexWrap: 'wrap' }}>
         <span><span style={{ color: T.muted }}>Age: </span><span style={{ fontWeight: 600, color: T.onSurface }}>{age !== null ? `${age} yrs` : 'Not set'}</span></span>
         <span><span style={{ color: T.muted }}>Height: </span><span style={{ fontWeight: 600, color: T.onSurface }}>{heightCm !== null ? `${heightCm} cm` : 'Not set'}</span></span>
         <span><span style={{ color: T.muted }}>Conditions: </span><span style={{ fontWeight: 600, color: T.onSurface }}>{conditionNotes && conditionNotes.trim().length > 0 ? conditionNotes : 'None reported'}</span></span>
@@ -360,10 +359,10 @@ export default function ClientProfileClient({
               cursor: 'pointer',
               fontFamily: font.body,
               fontSize: 13,
-              fontWeight: 700,
+              fontWeight: activeTab === tab ? 700 : 500,
               color: activeTab === tab ? T.primary : T.muted,
-              borderBottom: activeTab === tab ? `2px solid ${T.primary}` : '2px solid transparent',
-              marginBottom: -1,
+              textDecoration: activeTab === tab ? 'underline' : 'none',
+              textUnderlineOffset: 3,
             }}
           >
             {tab === 'overview' ? 'Overview' : tab === 'meals' ? 'Meals' : 'Report'}
@@ -400,7 +399,7 @@ export default function ClientProfileClient({
                               alt="Weight scale photo"
                               width={24}
                               height={24}
-                              style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 5, cursor: 'pointer' }}
+                              style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2, cursor: 'pointer' }}
                               onClick={() => setLightboxUrl(weightPhotoUrl)}
                             />
                           )}
@@ -413,7 +412,7 @@ export default function ClientProfileClient({
                             alt="Meal photo"
                             width={40}
                             height={40}
-                            style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, cursor: 'pointer' }}
+                            style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 2, cursor: 'pointer' }}
                             onClick={() => setLightboxUrl(photoUrl)}
                           />
                         )}
@@ -456,7 +455,7 @@ export default function ClientProfileClient({
                             style={{
                               padding: '10px 14px',
                               background: T.surfaceLow,
-                              borderRadius: 8,
+                              borderRadius: 2,
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'flex-start',
@@ -478,7 +477,7 @@ export default function ClientProfileClient({
                                 alt={`${MEAL_LABELS[mType]} photo`}
                                 width={48}
                                 height={48}
-                                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, cursor: 'pointer', flexShrink: 0 }}
+                                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 2, cursor: 'pointer', flexShrink: 0 }}
                                 onClick={() => setLightboxUrl(photoUrl)}
                               />
                             )}
@@ -552,7 +551,7 @@ function Sparkline({ points, unit, color }: { points: { date: string; value: num
           <div key={p.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
             <div
               title={p.value !== null ? `${p.value} ${unit}` : 'No log'}
-              style={{ width: '100%', height: `${p.value !== null ? pct : 2}%`, background: p.value !== null ? color : '#e5e7eb', borderRadius: '3px 3px 0 0' }}
+              style={{ width: '100%', height: `${p.value !== null ? pct : 2}%`, background: p.value !== null ? color : '#e5e7eb', borderRadius: '2px 2px 0 0' }}
             />
           </div>
         )
@@ -592,7 +591,7 @@ function ClientReportPanel({
             <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>Not yet computed.</p>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Badge status={flashCard.status} />
+              <StatusWord status={flashCard.status} />
               <span style={{ fontSize: 12, color: T.muted }}>as of {fmtDate(flashCard.computed_at)}</span>
             </div>
           )}
@@ -630,7 +629,7 @@ function ClientReportPanel({
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ fontSize: 12, color: T.muted }}>{fmtDate(p.assigned_at)}</span>
-                  <Badge status={p.status} small />
+                  <StatusWord status={p.status} />
                 </div>
               </Card>
             ))}
@@ -647,7 +646,7 @@ function ClientReportPanel({
             <span>{messages.length - messagesFromClient} from coach/staff</span>
           </div>
           {lastMessage ? (
-            <div style={{ padding: 10, background: T.surfaceLow, borderRadius: 8 }}>
+            <div style={{ padding: 10, background: T.surfaceLow, borderRadius: 2 }}>
               <div style={{ fontSize: 11, color: T.muted, marginBottom: 4 }}>
                 Last message · {lastMessage.fromClient ? 'from client' : 'to client'} · {fmtDateTime(lastMessage.created_at)}
               </div>
@@ -668,12 +667,12 @@ function ClientReportPanel({
             {absenceEvents.map(e => (
               <Card key={e.id} style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Badge status={ABSENCE_LEVEL_STATUS[e.level] ?? 'pending'} small labelOverride={e.level} />
+                  <StatusWord status={ABSENCE_LEVEL_STATUS[e.level] ?? 'pending'} labelOverride={e.level} />
                   <span style={{ fontSize: 12, color: T.muted }}>triggered {fmtDate(e.trigger_date)}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   {e.resolved_at && <span style={{ fontSize: 12, color: T.muted }}>resolved {fmtDate(e.resolved_at)}</span>}
-                  <Badge status={e.action_taken} small />
+                  <StatusWord status={e.action_taken} />
                 </div>
               </Card>
             ))}
