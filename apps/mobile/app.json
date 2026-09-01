@@ -30,6 +30,7 @@
           "motionPermission": "Allow Coaching to read your step count to auto-fill today's steps."
         }
       ],
+      "react-native-health-connect",
       "expo-background-task",
       [
         "expo-build-properties",

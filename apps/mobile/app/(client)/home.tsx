@@ -76,6 +76,18 @@ import {
   requestStepsPermission,
   readTodaySteps,
 } from '../../lib/stepsPedometer';
+import {
+  isHealthConnectAvailable,
+  hasStepsPermission as hasHealthConnectStepsPermission,
+  requestStepsPermission as requestHealthConnectStepsPermission,
+  readTodaySteps as readHealthConnectSteps,
+} from '../../lib/stepsHealthConnect';
+import {
+  isHealthConnectAvailable as isHealthConnectAvailableForWeight,
+  hasWeightPermission as hasHealthConnectWeightPermission,
+  requestWeightPermission as requestHealthConnectWeightPermission,
+  readLatestWeight as readHealthConnectWeight,
+} from '../../lib/weightHealthConnect';
 import { decideStepsSync } from '../../lib/stepsSync';
 import {
   markManualOverrideToday,
@@ -205,6 +217,13 @@ export default function HomeScreen() {
   const [steps, setSteps] = useState('');
   const [weight, setWeight] = useState('');
   const [questions, setQuestions] = useState('');
+  // Mirrors `weight` for syncWeight to read without depending on it —
+  // otherwise every keystroke would recreate syncWeight and re-trigger
+  // useFocusEffect's re-subscription while the screen is still focused.
+  const weightRef = useRef(weight);
+  useEffect(() => {
+    weightRef.current = weight;
+  }, [weight]);
 
   const [weightOcrState, setWeightOcrState] = useState(initialWeightOcrState);
   const [weightOcrBusy, setWeightOcrBusy] = useState(false);
@@ -213,11 +232,20 @@ export default function HomeScreen() {
   const [stepsSyncError, setStepsSyncError] = useState(false);
   const [stepsOcrState, setStepsOcrState] = useState(initialStepsOcrState);
   const [stepsOcrBusy, setStepsOcrBusy] = useState(false);
+  // Which tier actually produced the current value — client-side only,
+  // never persisted (no DB/RPC change). Lets a later, lower-trust tier
+  // know not to clobber a value a higher-trust tier already set.
+  const [stepsSource, setStepsSource] = useState<'health_connect' | 'pedometer' | 'ocr' | null>(null);
+  const [weightSource, setWeightSource] = useState<'health_connect' | 'ocr' | null>(null);
   // Guards BOTH the automatic (tab-focus) and manual (refresh button) sync
   // paths against running concurrently — the button's `disabled` prop alone
   // only blocks a second MANUAL tap; it doesn't see an in-flight automatic
   // sync, so two calls could otherwise race and both write to the server.
   const stepsSyncInFlightRef = useRef(false);
+  // Weight has no manual-override table (unlike steps) — the dirty-field
+  // guard plus "only fill when empty" below is sufficient since Health
+  // Connect weight sync is brand new and has no existing UI to preserve.
+  const weightSyncInFlightRef = useRef(false);
 
   // Meal state for Today's Log quick-add
   const [selectedMealType, setSelectedMealType] = useState<MealType | null>(null);
@@ -524,7 +552,35 @@ export default function HomeScreen() {
   // whatever it read the very first time, for the entire app session, with
   // no way to force a fresh read. `manual` marks a user-triggered refresh
   // (drives the small refresh button's spinner and its "unavailable" hint).
-  const syncStepsFromPedometer = useCallback(
+  // Tier 1: Health Connect (preferred when available — Android 14+ ships
+  // it in the OS, and its aggregate() query can include on-device steps
+  // automatically). Tier 2: the Pedometer sensor, which works on every
+  // phone including Android <14 without the Health Connect companion app
+  // installed — kept as a fallback, not replaced, specifically because
+  // this app's real tester device (Android 13) needs it. Returns null
+  // when this source has nothing usable, so the caller can try the next
+  // tier without needing to know which source it just tried.
+  const tryHealthConnectSteps = async (): Promise<number | null> => {
+    const available = await isHealthConnectAvailable();
+    if (!available) return null;
+    let granted = await hasHealthConnectStepsPermission();
+    if (!granted) granted = await requestHealthConnectStepsPermission();
+    if (!granted) return null;
+    const result = await readHealthConnectSteps();
+    return result.status === 'ok' ? result.steps : null;
+  };
+
+  const tryPedometerSteps = async (): Promise<number | null> => {
+    const available = await isPedometerAvailable();
+    if (!available) return null;
+    let granted = await hasStepsPermission();
+    if (!granted) granted = await requestStepsPermission();
+    if (!granted) return null;
+    const result = await readTodaySteps();
+    return result.status === 'ok' ? result.steps : null;
+  };
+
+  const syncSteps = useCallback(
     async (manual = false) => {
       if (!userId) return;
       // Covers both trigger paths (tab-focus auto-sync and the manual
@@ -538,49 +594,43 @@ export default function HomeScreen() {
         setStepsSyncError(false);
       }
       try {
-        const available = await isPedometerAvailable();
-        if (!available) {
+        const today = getTodayISO();
+        const overrideActive = await isManualOverrideActiveToday(today);
+        // A manual override active today means the user (or a prior OCR
+        // read) already set today's value deliberately — never let an
+        // automatic sync from any source overwrite that, regardless of
+        // which tier would otherwise succeed.
+        if (overrideActive) {
+          if (manual) setStepsSyncUnavailable(false);
+          return;
+        }
+
+        let steps = await tryHealthConnectSteps();
+        let source: 'health_connect' | 'pedometer' | null = steps !== null ? 'health_connect' : null;
+        if (steps === null) {
+          steps = await tryPedometerSteps();
+          if (steps !== null) source = 'pedometer';
+        }
+
+        if (__DEV__) {
+          console.log('[stepsForegroundSync]', { today, steps, source, manual });
+        }
+
+        if (steps === null) {
+          // Neither tier had anything usable — this is what should
+          // surface the OCR fallback button, not a single tier's own
+          // unavailability.
           if (manual) setStepsSyncUnavailable(true);
           return;
         }
         if (manual) setStepsSyncUnavailable(false);
+        setStepsSource(source);
 
-        let granted = await hasStepsPermission();
-        if (!granted) {
-          granted = await requestStepsPermission();
-        }
-        if (!granted) {
-          // A denied/unresolved permission on a MANUAL attempt is a real,
-          // actionable failure the user should see — not silent, and not
-          // the same message as "this device has no step sensor at all".
-          if (manual) setStepsSyncError(true);
-          return;
-        }
-
-        const today = getTodayISO();
-        const result = await readTodaySteps();
-        const overrideActive = await isManualOverrideActiveToday(today);
-        const decision = decideStepsSync(today, overrideActive, result);
-
-        if (__DEV__) {
-          console.log('[stepsForegroundSync]', { today, result, overrideActive, decision, manual });
-        }
-
-        if (manual && result.status === 'error') {
-          setStepsSyncError(true);
-        }
-
-        // decideStepsSync already skips when the user has a manual
-        // override active today (set on every Steps keystroke below), but
-        // guard on dirtyFieldsRef too for the same reason loadData does —
-        // belt-and-suspenders against clobbering an in-progress edit.
-        if (decision.action === 'update' && !dirtyFieldsRef.current.steps) {
-          setSteps(String(decision.value));
+        if (!dirtyFieldsRef.current.steps) {
+          setSteps(String(steps));
           setSubmitSuccess(false);
           const supabase = createMobileSupabaseClient();
-          const { error } = await supabase.rpc('update_today_log', {
-            p_steps: decision.value,
-          });
+          const { error } = await supabase.rpc('update_today_log', { p_steps: steps });
           if (error) {
             if (manual) setStepsSyncError(true);
             if (__DEV__) console.log('[stepsForegroundSync] update_today_log failed', error);
@@ -602,10 +652,60 @@ export default function HomeScreen() {
     [userId]
   );
 
+  // Weight via Health Connect — a genuinely new capability, so there is no
+  // existing tier to preserve and no manual-override table to consult.
+  // Mirrors syncSteps' "never overwrite the user's own value" rule via the
+  // simpler guard already used elsewhere on this screen: skip when the
+  // field is dirty (mid-edit) or already has a value (OCR or a prior
+  // manual entry today) — Health Connect only ever fills an EMPTY field.
+  const tryHealthConnectWeight = async (): Promise<number | null> => {
+    const available = await isHealthConnectAvailableForWeight();
+    if (!available) return null;
+    let granted = await hasHealthConnectWeightPermission();
+    if (!granted) granted = await requestHealthConnectWeightPermission();
+    if (!granted) return null;
+    const result = await readHealthConnectWeight();
+    return result.status === 'ok' ? result.weightKg : null;
+  };
+
+  const syncWeight = useCallback(async () => {
+    if (!userId) return;
+    if (weightSyncInFlightRef.current) return;
+    if (dirtyFieldsRef.current.weight || weightRef.current.trim() !== '') return;
+    weightSyncInFlightRef.current = true;
+    try {
+      const weightKg = await tryHealthConnectWeight();
+      if (__DEV__) {
+        console.log('[weightForegroundSync]', { weightKg });
+      }
+      if (weightKg === null) return;
+      // Re-check right before writing — an OCR read or manual keystroke
+      // could have landed while the Health Connect call was in flight.
+      if (dirtyFieldsRef.current.weight || weightRef.current.trim() !== '') return;
+
+      setWeightSource('health_connect');
+      setWeight(String(weightKg));
+      setSubmitSuccess(false);
+      const supabase = createMobileSupabaseClient();
+      const { error } = await supabase.rpc('update_today_log', { p_weight: weightKg });
+      if (error && __DEV__) {
+        console.log('[weightForegroundSync] update_today_log failed', error);
+      }
+    } catch (err) {
+      if (__DEV__) {
+        console.log('[weightForegroundSync] unexpected error', err);
+      }
+      // Never let weight auto-sync crash or block the Daily Log.
+    } finally {
+      weightSyncInFlightRef.current = false;
+    }
+  }, [userId]);
+
   useFocusEffect(
     useCallback(() => {
-      syncStepsFromPedometer();
-    }, [syncStepsFromPedometer])
+      syncSteps();
+      syncWeight();
+    }, [syncSteps, syncWeight])
   );
 
   // Refetch on every tab focus (silent — no full-screen spinner), not just
@@ -641,6 +741,8 @@ export default function HomeScreen() {
         reduceWeightOcrState(s, { type: 'OCR_SUCCESS', photoUri, value })
       );
       setWeight(String(value));
+      setWeightSource('ocr');
+      dirtyFieldsRef.current.weight = true;
       setSubmitSuccess(false);
     } catch (err) {
       console.warn('[weight-ocr] recognizeText failed:', err instanceof Error ? err.message : err);
@@ -729,6 +831,7 @@ export default function HomeScreen() {
         reduceStepsOcrState(s, { type: 'OCR_SUCCESS_HIGH_CONFIDENCE', photoUri, value: parsed.steps })
       );
       setSteps(String(parsed.steps));
+      setStepsSource('ocr');
       dirtyFieldsRef.current.steps = true;
       setSubmitSuccess(false);
     } catch (err) {
@@ -1613,7 +1716,7 @@ export default function HomeScreen() {
                 />
                 <TouchableOpacity
                   style={styles.weightCameraButton}
-                  onPress={() => syncStepsFromPedometer(true)}
+                  onPress={() => syncSteps(true)}
                   disabled={stepsSyncBusy || submitSuccess}
                   accessibilityRole="button"
                   accessibilityLabel="Refresh steps from device"
@@ -1634,7 +1737,7 @@ export default function HomeScreen() {
                 <View style={styles.retakeBanner}>
                   <Text style={styles.retakeBannerText}>Couldn't get steps from your phone — try again?</Text>
                   <TouchableOpacity
-                    onPress={() => syncStepsFromPedometer(true)}
+                    onPress={() => syncSteps(true)}
                     accessibilityRole="button"
                     accessibilityLabel="Retry steps sync"
                   >
