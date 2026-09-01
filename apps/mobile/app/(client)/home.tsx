@@ -208,6 +208,12 @@ export default function HomeScreen() {
   const [weightOcrBusy, setWeightOcrBusy] = useState(false);
   const [stepsSyncBusy, setStepsSyncBusy] = useState(false);
   const [stepsSyncUnavailable, setStepsSyncUnavailable] = useState(false);
+  const [stepsSyncError, setStepsSyncError] = useState(false);
+  // Guards BOTH the automatic (tab-focus) and manual (refresh button) sync
+  // paths against running concurrently — the button's `disabled` prop alone
+  // only blocks a second MANUAL tap; it doesn't see an in-flight automatic
+  // sync, so two calls could otherwise race and both write to the server.
+  const stepsSyncInFlightRef = useRef(false);
 
   // Meal state for Today's Log quick-add
   const [selectedMealType, setSelectedMealType] = useState<MealType | null>(null);
@@ -517,7 +523,16 @@ export default function HomeScreen() {
   const syncStepsFromPedometer = useCallback(
     async (manual = false) => {
       if (!userId) return;
-      if (manual) setStepsSyncBusy(true);
+      // Covers both trigger paths (tab-focus auto-sync and the manual
+      // button) — without this, a manual tap while an automatic sync is
+      // still in flight could run two overlapping syncs that both write
+      // to the server.
+      if (stepsSyncInFlightRef.current) return;
+      stepsSyncInFlightRef.current = true;
+      if (manual) {
+        setStepsSyncBusy(true);
+        setStepsSyncError(false);
+      }
       try {
         const available = await isPedometerAvailable();
         if (!available) {
@@ -530,7 +545,13 @@ export default function HomeScreen() {
         if (!granted) {
           granted = await requestStepsPermission();
         }
-        if (!granted) return;
+        if (!granted) {
+          // A denied/unresolved permission on a MANUAL attempt is a real,
+          // actionable failure the user should see — not silent, and not
+          // the same message as "this device has no step sensor at all".
+          if (manual) setStepsSyncError(true);
+          return;
+        }
 
         const today = getTodayISO();
         const result = await readTodaySteps();
@@ -539,6 +560,10 @@ export default function HomeScreen() {
 
         if (__DEV__) {
           console.log('[stepsForegroundSync]', { today, result, overrideActive, decision, manual });
+        }
+
+        if (manual && result.status === 'error') {
+          setStepsSyncError(true);
         }
 
         // decideStepsSync already skips when the user has a manual
@@ -552,18 +577,21 @@ export default function HomeScreen() {
           const { error } = await supabase.rpc('update_today_log', {
             p_steps: decision.value,
           });
-          if (__DEV__ && error) {
-            console.log('[stepsForegroundSync] update_today_log failed', error);
+          if (error) {
+            if (manual) setStepsSyncError(true);
+            if (__DEV__) console.log('[stepsForegroundSync] update_today_log failed', error);
           }
         }
 
         await registerStepsBackgroundTask();
       } catch (err) {
+        if (manual) setStepsSyncError(true);
         if (__DEV__) {
           console.log('[stepsForegroundSync] unexpected error', err);
         }
         // Never let steps auto-sync crash or block the Daily Log.
       } finally {
+        stepsSyncInFlightRef.current = false;
         if (manual) setStepsSyncBusy(false);
       }
     },
@@ -1505,6 +1533,18 @@ export default function HomeScreen() {
                 <Text style={styles.manualFallbackHint}>
                   Step tracking isn't available on this device — enter steps manually.
                 </Text>
+              )}
+              {stepsSyncError && (
+                <View style={styles.retakeBanner}>
+                  <Text style={styles.retakeBannerText}>Couldn't get steps from your phone — try again?</Text>
+                  <TouchableOpacity
+                    onPress={() => syncStepsFromPedometer(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry steps sync"
+                  >
+                    <Text style={styles.retakeBannerAction}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
               )}
 
               <FieldLabel>Weight (kg)</FieldLabel>

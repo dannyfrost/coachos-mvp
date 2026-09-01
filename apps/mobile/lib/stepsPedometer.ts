@@ -20,9 +20,53 @@ export type StepsReadResult =
   | { status: 'unavailable' }
   | { status: 'error' };
 
+/**
+ * A hung native call (a documented failure mode for RN sensor/permission
+ * bridges on some Android OEM skins — the JS promise never resolves OR
+ * rejects) previously meant every caller's try/catch/finally never ran,
+ * leaving loading state stuck forever. This guarantees every native call
+ * this module makes always settles within a bounded time, so callers can
+ * always reach their `finally`. It cannot cancel the underlying native
+ * work, only stop waiting on it — that's the correct, standard mitigation
+ * for a bridge call with no native cancellation API.
+ */
+export class PedometerTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PedometerTimeoutError';
+  }
+}
+
+export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new PedometerTimeoutError(`${label} timed out after ${ms}ms`));
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
+// Background status/data queries involve no user interaction, so a hang
+// past a few seconds is always abnormal — kept short.
+const QUERY_TIMEOUT_MS = 6000;
+// The permission request shows a real OS dialog and waits for a human to
+// tap it — needs a much longer bound than a background query, but still a
+// bound, so a lost native callback (dialog shown but response never
+// reaches JS) doesn't hang forever either.
+const PERMISSION_DIALOG_TIMEOUT_MS = 60000;
+
 export async function isPedometerAvailable(): Promise<boolean> {
   try {
-    return await Pedometer.isAvailableAsync();
+    return await withTimeout(Pedometer.isAvailableAsync(), QUERY_TIMEOUT_MS, 'isAvailableAsync');
   } catch {
     return false;
   }
@@ -30,7 +74,7 @@ export async function isPedometerAvailable(): Promise<boolean> {
 
 export async function hasStepsPermission(): Promise<boolean> {
   try {
-    const { status } = await Pedometer.getPermissionsAsync();
+    const { status } = await withTimeout(Pedometer.getPermissionsAsync(), QUERY_TIMEOUT_MS, 'getPermissionsAsync');
     return status === 'granted';
   } catch {
     return false;
@@ -39,7 +83,11 @@ export async function hasStepsPermission(): Promise<boolean> {
 
 export async function requestStepsPermission(): Promise<boolean> {
   try {
-    const { status } = await Pedometer.requestPermissionsAsync();
+    const { status } = await withTimeout(
+      Pedometer.requestPermissionsAsync(),
+      PERMISSION_DIALOG_TIMEOUT_MS,
+      'requestPermissionsAsync'
+    );
     return status === 'granted';
   } catch {
     return false;
@@ -67,7 +115,11 @@ export async function readTodaySteps(): Promise<StepsReadResult> {
     if (!hasPermission) return { status: 'denied' };
 
     const { start, end } = getTodayRange();
-    const result = await Pedometer.getStepCountAsync(start, end);
+    const result = await withTimeout(
+      Pedometer.getStepCountAsync(start, end),
+      QUERY_TIMEOUT_MS,
+      'getStepCountAsync'
+    );
 
     if (!result || typeof result.steps !== 'number') {
       return { status: 'no_data' };
