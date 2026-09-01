@@ -627,6 +627,12 @@ export default function HomeScreen() {
       const value = extractWeightCandidate(ocrResult);
 
       if (value === null) {
+        // Unconditional (not __DEV__-gated — __DEV__ is false in this
+        // preview/production build, so a gated log would never surface):
+        // logs exactly what ML Kit actually recognized so a real failure
+        // can be diagnosed from logcat instead of guessed at. Low-risk,
+        // diagnostic-only, no user-facing effect.
+        console.warn('[weight-ocr] no candidate found, raw OCR text:', JSON.stringify(ocrResult.text));
         setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
         return;
       }
@@ -713,16 +719,14 @@ export default function HomeScreen() {
         return;
       }
 
-      // A low-confidence read is pre-filled but never treated as final —
-      // reduceStepsOcrState routes it to 'needs_confirmation', which the
-      // UI renders as an explicit confirm-or-edit prompt rather than
-      // silently accepting it, per the fallback-hierarchy requirement.
+      // User's call after trying the low-confidence confirmation prompt in
+      // practice: skip it, accept any successful read silently (matches
+      // the weight-OCR flow's UX, which never asked for confirmation
+      // either). stepsOcrState still supports OCR_SUCCESS_LOW_CONFIDENCE/
+      // 'needs_confirmation' — dispatch that instead of this line if the
+      // confirmation step is wanted back later, no other change needed.
       setStepsOcrState((s) =>
-        reduceStepsOcrState(s, {
-          type: parsed.confidence === 'high' ? 'OCR_SUCCESS_HIGH_CONFIDENCE' : 'OCR_SUCCESS_LOW_CONFIDENCE',
-          photoUri,
-          value: parsed.steps,
-        })
+        reduceStepsOcrState(s, { type: 'OCR_SUCCESS_HIGH_CONFIDENCE', photoUri, value: parsed.steps })
       );
       setSteps(String(parsed.steps));
       dirtyFieldsRef.current.steps = true;
@@ -1658,20 +1662,6 @@ export default function HomeScreen() {
                     <Text style={styles.btnOutlineText}>Read steps from a photo</Text>
                   )}
                 </TouchableOpacity>
-              )}
-              {stepsOcrState.status === 'needs_confirmation' && (
-                <View style={styles.retakeBanner}>
-                  <Text style={styles.retakeBannerText}>
-                    Found {stepsOcrState.suggestedValue} — but couldn't confirm it's labeled "steps". Correct?
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'CONFIRMED' }))}
-                    accessibilityRole="button"
-                    accessibilityLabel="Confirm this is the correct step count"
-                  >
-                    <Text style={styles.retakeBannerAction}>Yes, correct</Text>
-                  </TouchableOpacity>
-                </View>
               )}
               {stepsOcrState.status === 'retake_prompt' && (
                 <View style={styles.retakeBanner}>
