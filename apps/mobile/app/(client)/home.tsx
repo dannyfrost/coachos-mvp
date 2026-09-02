@@ -237,6 +237,14 @@ export default function HomeScreen() {
   // know not to clobber a value a higher-trust tier already set.
   const [stepsSource, setStepsSource] = useState<'health_connect' | 'pedometer' | 'ocr' | null>(null);
   const [weightSource, setWeightSource] = useState<'health_connect' | 'ocr' | null>(null);
+  // True only for the most recent weight-OCR attempt that was skipped
+  // (never even sent to ML Kit) because the picked photo's pixel
+  // dimensions were below MIN_OCR_DIMENSION — the confirmed real-world
+  // failure mode was a 309x302 image, ~10x smaller than a real phone
+  // photo, which no OCR engine can read reliably. Lets the retake/manual
+  // banners give a specific, actionable message instead of the generic
+  // "couldn't read the number" for this one diagnosable case.
+  const [weightPhotoTooSmall, setWeightPhotoTooSmall] = useState(false);
   // Guards BOTH the automatic (tab-focus) and manual (refresh button) sync
   // paths against running concurrently — the button's `disabled` prop alone
   // only blocks a second MANUAL tap; it doesn't see an in-flight automatic
@@ -720,7 +728,13 @@ export default function HomeScreen() {
     }, [loadData])
   );
 
+  // Real phone photos run several thousand px on a side; a picked asset
+  // below this on either dimension is a thumbnail/screenshot crop, not a
+  // usable photo — reject it before wasting an ML Kit call.
+  const MIN_OCR_DIMENSION = 500;
+
   const runWeightOcr = async (photoUri: string) => {
+    setWeightPhotoTooSmall(false);
     setWeightOcrBusy(true);
     try {
       const ocrResult = await recognizeText(photoUri, 'latin');
@@ -765,7 +779,13 @@ export default function HomeScreen() {
     });
 
     if (result.canceled || !result.assets[0]) return;
-    await runWeightOcr(result.assets[0].uri);
+    const asset = result.assets[0];
+    if (asset.width < MIN_OCR_DIMENSION || asset.height < MIN_OCR_DIMENSION) {
+      setWeightPhotoTooSmall(true);
+      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri: asset.uri }));
+      return;
+    }
+    await runWeightOcr(asset.uri);
   };
 
   const handleWeightGalleryPress = async () => {
@@ -781,7 +801,13 @@ export default function HomeScreen() {
     });
 
     if (result.canceled || !result.assets[0]) return;
-    await runWeightOcr(result.assets[0].uri);
+    const asset = result.assets[0];
+    if (asset.width < MIN_OCR_DIMENSION || asset.height < MIN_OCR_DIMENSION) {
+      setWeightPhotoTooSmall(true);
+      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri: asset.uri }));
+      return;
+    }
+    await runWeightOcr(asset.uri);
   };
 
   // Single "From photo" entry point (spec: one quiet control, no visible
@@ -1728,6 +1754,15 @@ export default function HomeScreen() {
                   )}
                 </TouchableOpacity>
               </View>
+              {steps.length > 0 &&
+                stepsOcrState.suggestedValue !== null &&
+                steps === String(stepsOcrState.suggestedValue) && (
+                  <View style={styles.fromPhotoRow}>
+                    <Ionicons name="image" size={13} color={T.success} />
+                    <Text style={styles.fromPhotoText}>Read {steps} from photo</Text>
+                  </View>
+                )}
+
               {stepsSyncUnavailable && (
                 <Text style={styles.manualFallbackHint}>
                   Step tracking isn't available on this device — enter steps manually.
@@ -1834,7 +1869,9 @@ export default function HomeScreen() {
               {weightOcrState.status === 'retake_prompt' && (
                 <View style={styles.retakeBanner}>
                   <Text style={styles.retakeBannerText}>
-                    Couldn't read the number — try again?
+                    {weightPhotoTooSmall
+                      ? "That photo's too small to read clearly — try getting closer or better lighting."
+                      : "Couldn't read the number — try again?"}
                   </Text>
                   <TouchableOpacity
                     onPress={handleFromPhotoPress}
@@ -1848,7 +1885,9 @@ export default function HomeScreen() {
 
               {weightOcrState.status === 'manual_fallback' && (
                 <Text style={styles.manualFallbackHint}>
-                  Photo saved — enter your weight below.
+                  {weightPhotoTooSmall
+                    ? "That photo's too small to read clearly — enter your weight below."
+                    : 'Photo saved — enter your weight below.'}
                 </Text>
               )}
               </View>
