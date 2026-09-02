@@ -823,9 +823,15 @@ export default function HomeScreen() {
         }
       );
     } else {
+      // Deferred, not called directly: launching the camera/gallery
+      // activity synchronously from inside an Android AlertDialog's
+      // onPress can race the dialog's own dismiss/window-teardown,
+      // leaving a stuck translucent scrim behind on some OEM Android
+      // builds. Letting the dialog fully close first (one tick) avoids
+      // the race entirely.
       Alert.alert('From photo', undefined, [
-        { text: 'Take Photo', onPress: handleWeightCameraPress },
-        { text: 'Choose from Library', onPress: handleWeightGalleryPress },
+        { text: 'Take Photo', onPress: () => setTimeout(handleWeightCameraPress, 300) },
+        { text: 'Choose from Library', onPress: () => setTimeout(handleWeightGalleryPress, 300) },
         { text: 'Cancel', style: 'cancel' },
       ]);
     }
@@ -910,9 +916,10 @@ export default function HomeScreen() {
         }
       );
     } else {
+      // Same deferred-launch reasoning as handleFromPhotoPress above.
       Alert.alert('Steps from photo', undefined, [
-        { text: 'Take Photo', onPress: handleStepsCameraPress },
-        { text: 'Choose from Library', onPress: handleStepsGalleryPress },
+        { text: 'Take Photo', onPress: () => setTimeout(handleStepsCameraPress, 300) },
+        { text: 'Choose from Library', onPress: () => setTimeout(handleStepsGalleryPress, 300) },
         { text: 'Cancel', style: 'cancel' },
       ]);
     }
