@@ -743,10 +743,13 @@ export default function HomeScreen() {
       if (value === null) {
         // Unconditional (not __DEV__-gated — __DEV__ is false in this
         // preview/production build, so a gated log would never surface):
-        // logs exactly what ML Kit actually recognized so a real failure
-        // can be diagnosed from logcat instead of guessed at. Low-risk,
-        // diagnostic-only, no user-facing effect.
-        console.warn('[weight-ocr] no candidate found, raw OCR text:', JSON.stringify(ocrResult.text));
+        // logs what ML Kit recognized so a real failure can be diagnosed
+        // from logcat instead of guessed at. Truncated to bound exposure
+        // of whatever else the camera picked up in frame.
+        console.warn(
+          '[weight-ocr] no candidate found, raw OCR text (truncated):',
+          JSON.stringify(ocrResult.text).slice(0, 200)
+        );
         setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
         return;
       }
