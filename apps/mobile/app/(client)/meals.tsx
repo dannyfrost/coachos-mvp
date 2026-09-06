@@ -175,7 +175,7 @@ export default function MealsScreen() {
           .single(),
         supabase
           .from('plan_assignments')
-          .select('assigned_at, plans(content)')
+          .select('assigned_at, plans!plan_assignments_plan_id_fkey(content)')
           .eq('client_id', uid)
           .eq('plan_type', 'meal')
           .eq('status', 'active')
