@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@coaching/supabase": "workspace:*",
@@ -23,6 +24,7 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "^14",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.0"
   }
 }

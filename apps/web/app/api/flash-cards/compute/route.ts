@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@coaching/supabase/server'
-
-function getIntSetting(settings: unknown, key: string, fallback: number): number {
-  if (settings !== null && typeof settings === 'object' && !Array.isArray(settings)) {
-    const val = (settings as Record<string, unknown>)[key]
-    if (typeof val === 'number' && Number.isFinite(val) && val > 0) return Math.floor(val)
-  }
-  return fallback
-}
+import { getIntSetting, daysBetween, computeFlashCard } from '../../../../lib/flash-card-logic'
 
 // Shared by GET (Vercel Cron invokes with GET + auto Bearer CRON_SECRET)
 // and POST (manual recovery). Single implementation — same auth, same logic.
@@ -89,16 +82,12 @@ async function handleComputeRequest(req: NextRequest) {
       const criticalDays = getIntSetting(settings, 'absence_critical_days', 4)
       const stagnationDays = getIntSetting(settings, 'weight_stagnation_days', 7)
 
-      let fcStatus: 'green' | 'yellow' | 'red'
-      let fcReason: string
-      let fcInterpretation: string | null
       let fcLastLogAt: string | null = null
+      let recentWeights: number[] = []
+      let hasLog = false
+      let daysAbsent = 0
 
-      if (clientStatus === 'paused') {
-        fcStatus = 'yellow'
-        fcReason = 'client paused'
-        fcInterpretation = null
-      } else {
+      if (clientStatus !== 'paused') {
         // Latest daily log
         const { data: latestLog } = await serviceClient
           .from('daily_logs')
@@ -108,26 +97,13 @@ async function handleComputeRequest(req: NextRequest) {
           .limit(1)
           .maybeSingle()
 
-        if (!latestLog) {
-          fcStatus = 'red'
-          fcReason = 'no check-ins recorded'
-          fcInterpretation = 'no data available'
-        } else {
-          fcLastLogAt = latestLog.created_at
-          const daysAbsent = Math.floor(
-            (new Date(utcToday).getTime() - new Date(latestLog.log_date).getTime()) /
-            (1000 * 60 * 60 * 24)
-          )
+        hasLog = !!latestLog
 
-          if (daysAbsent > criticalDays) {
-            fcStatus = 'red'
-            fcReason = `no check-in for ${daysAbsent} days`
-            fcInterpretation = 'extended absence detected'
-          } else if (daysAbsent > warningDays) {
-            fcStatus = 'yellow'
-            fcReason = `missed check-in for ${daysAbsent} days`
-            fcInterpretation = 'absence warning threshold reached'
-          } else {
+        if (latestLog) {
+          fcLastLogAt = latestLog.created_at
+          daysAbsent = daysBetween(utcToday, latestLog.log_date)
+
+          if (daysAbsent <= warningDays) {
             // Weight stagnation check
             const windowStart = new Date(
               new Date(utcToday).getTime() - stagnationDays * 24 * 60 * 60 * 1000
@@ -140,23 +116,22 @@ async function handleComputeRequest(req: NextRequest) {
               .gte('log_date', windowStart)
               .not('weight', 'is', null)
 
-            const weights = (weightLogs ?? [])
+            recentWeights = (weightLogs ?? [])
               .map(r => r.weight)
               .filter((w): w is number => typeof w === 'number')
-            const uniqueWeights = new Set(weights)
-
-            if (weights.length >= stagnationDays && uniqueWeights.size === 1) {
-              fcStatus = 'yellow'
-              fcReason = `weight unchanged for ${stagnationDays} days`
-              fcInterpretation = 'stagnation despite compliance'
-            } else {
-              fcStatus = 'green'
-              fcReason = 'on track'
-              fcInterpretation = null
-            }
           }
         }
       }
+
+      const { status: fcStatus, reason: fcReason, interpretation: fcInterpretation } = computeFlashCard({
+        clientStatus,
+        hasLog,
+        daysAbsent,
+        warningDays,
+        criticalDays,
+        stagnationDays,
+        recentWeights,
+      })
 
       // Food summary: last 3 non-null meal descriptions
       const { data: foodLogs } = await serviceClient
