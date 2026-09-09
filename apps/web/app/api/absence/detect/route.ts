@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@coaching/supabase/server'
 import { sendAbsenceAlertEmail } from '../../../../lib/email/send-absence-alert-email'
-
-type AbsenceLevel = '24h' | '48h' | '72h'
-
-function levelForDaysAbsent(daysAbsent: number): AbsenceLevel | null {
-  if (daysAbsent >= 3) return '72h'
-  if (daysAbsent === 2) return '48h'
-  if (daysAbsent === 1) return '24h'
-  return null
-}
+import { levelForDaysAbsent } from '../../../../lib/absence-detection'
+import { daysBetween } from '../../../../lib/flash-card-logic'
 
 // Shared by GET (Vercel Cron invokes with GET + auto Bearer CRON_SECRET)
 // and POST (manual recovery). Mirrors /api/flash-cards/compute's auth pattern.
@@ -89,9 +82,7 @@ async function handleDetectRequest(req: NextRequest) {
 
       if (!latestLog) continue
 
-      const daysAbsent = Math.floor(
-        (new Date(utcToday).getTime() - new Date(latestLog.log_date).getTime()) / (1000 * 60 * 60 * 24)
-      )
+      const daysAbsent = daysBetween(utcToday, latestLog.log_date)
 
       const level = levelForDaysAbsent(daysAbsent)
       if (!level) continue
