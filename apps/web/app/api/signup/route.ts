@@ -1,41 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@coaching/supabase/server'
-
-interface SignupBody {
-  email: string
-  password: string
-  full_name: string
-  workspace_name: string
-}
-
-function validateBody(raw: unknown): { ok: true; data: SignupBody } | { ok: false; error: string } {
-  if (typeof raw !== 'object' || raw === null) {
-    return { ok: false, error: 'Invalid request body' }
-  }
-  const b = raw as Record<string, unknown>
-  const email = typeof b.email === 'string' ? b.email.trim() : ''
-  const password = typeof b.password === 'string' ? b.password.trim() : ''
-  const full_name = typeof b.full_name === 'string' ? b.full_name.trim() : ''
-  const workspace_name = typeof b.workspace_name === 'string' ? b.workspace_name.trim() : ''
-
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { ok: false, error: 'Invalid email format' }
-  }
-  if (password.length < 8) {
-    return { ok: false, error: 'Password must be at least 8 characters' }
-  }
-  if (full_name.length < 2 || full_name.length > 100) {
-    return { ok: false, error: 'full_name must be between 2 and 100 characters' }
-  }
-  if (workspace_name.length < 2 || workspace_name.length > 50) {
-    return { ok: false, error: 'workspace_name must be between 2 and 50 characters' }
-  }
-  if (!/^[a-zA-Z0-9 \-']+$/.test(workspace_name)) {
-    return { ok: false, error: "workspace_name may only contain letters, numbers, spaces, hyphens, and apostrophes" }
-  }
-
-  return { ok: true, data: { email, password, full_name, workspace_name } }
-}
+import { validateSignupBody, extractInviteCode, checkInviteCode } from '../../../lib/signup-validation'
 
 export async function POST(req: NextRequest) {
   let body: unknown
@@ -49,15 +14,12 @@ export async function POST(req: NextRequest) {
   // operation. Fails closed when SIGNUP_INVITE_CODE is not configured.
   // The code is server-only: never logged, never echoed in any response.
   const expectedCode = process.env.SIGNUP_INVITE_CODE
-  const suppliedCode =
-    typeof body === 'object' && body !== null && typeof (body as Record<string, unknown>).invite_code === 'string'
-      ? ((body as Record<string, unknown>).invite_code as string)
-      : ''
-  if (!expectedCode || suppliedCode !== expectedCode) {
+  const suppliedCode = extractInviteCode(body)
+  if (!checkInviteCode(suppliedCode, expectedCode)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const validation = validateBody(body)
+  const validation = validateSignupBody(body)
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400 })
   }

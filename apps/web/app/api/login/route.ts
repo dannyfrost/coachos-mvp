@@ -1,28 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAnonServerClient } from '@coaching/supabase/auth-server'
-
-interface LoginBody {
-  email: string
-  password: string
-}
-
-function validateBody(raw: unknown): { ok: true; data: LoginBody } | { ok: false; error: string } {
-  if (typeof raw !== 'object' || raw === null) {
-    return { ok: false, error: 'Invalid request body' }
-  }
-  const b = raw as Record<string, unknown>
-  const email = typeof b.email === 'string' ? b.email.trim() : ''
-  const password = typeof b.password === 'string' ? b.password : ''
-
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { ok: false, error: 'Invalid email format' }
-  }
-  if (password.length === 0) {
-    return { ok: false, error: 'Password is required' }
-  }
-
-  return { ok: true, data: { email, password } }
-}
+import { validateLoginBody, mapLoginAuthError } from '../../../lib/login-validation'
 
 export async function POST(req: NextRequest) {
   let body: unknown
@@ -32,7 +10,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const validation = validateBody(body)
+  const validation = validateLoginBody(body)
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400 })
   }
@@ -43,10 +21,8 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error) {
-    if (error.status !== undefined && error.status >= 400 && error.status < 500) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-    }
-    return NextResponse.json({ error: 'Login failed' }, { status: 500 })
+    const mapped = mapLoginAuthError(error.status)
+    return NextResponse.json({ error: mapped.error }, { status: mapped.status })
   }
 
   if (!data.user || !data.session) {
