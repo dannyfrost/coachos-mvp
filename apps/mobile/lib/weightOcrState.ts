@@ -1,13 +1,17 @@
 /**
  * Pure state machine for the weight-OCR capture flow. No camera or
- * native OCR calls here — this only tracks attempt count, whether to
- * show a retake prompt, and which photo (if any) should be uploaded
- * at save time. The Weight text input itself is a normal controlled
- * field owned by the screen, independent of this state — there is no
- * "locked" status here by design, since it must always stay editable.
+ * native OCR calls here — this only tracks attempt count and which
+ * photo (if any) should be uploaded at save time. Manual entry is
+ * never gated behind a failed OCR attempt: a single OCR_FAILURE goes
+ * straight to 'manual_fallback' (no retry-then-fallback ladder) since
+ * real-world scale photos (seven-segment LCD, off-axis angle) make
+ * repeated auto-retries a false promise, not a real recovery path. The
+ * Weight text input itself is a normal controlled field owned by the
+ * screen, independent of this state — there is no "locked" status here
+ * by design, since it must always stay editable.
  */
 
-export type WeightOcrStatus = 'idle' | 'retake_prompt' | 'manual_fallback';
+export type WeightOcrStatus = 'idle' | 'manual_fallback';
 
 export type WeightOcrState = {
   attempt: number;
@@ -46,26 +50,18 @@ export function reduceWeightOcrState(
         suggestedValue: event.value,
       };
 
-    case 'OCR_FAILURE': {
-      const nextAttempt = state.attempt + 1;
-      if (nextAttempt >= 2) {
-        // Second failure: stop retrying, but the attempt-2 photo is
-        // retained and will upload alongside whatever the user types.
-        return {
-          attempt: nextAttempt,
-          status: 'manual_fallback',
-          retainedPhotoUri: event.photoUri,
-          suggestedValue: null,
-        };
-      }
-      // First failure: offer a retake, discard the failed photo.
+    case 'OCR_FAILURE':
+      // Any failure, first attempt included: straight to manual entry.
+      // The photo is retained and will upload alongside whatever the
+      // user types — still useful as proof even though OCR couldn't
+      // read it. Retaking is always available via the camera button,
+      // it's just never forced before the user can type a value.
       return {
-        attempt: nextAttempt,
-        status: 'retake_prompt',
-        retainedPhotoUri: null,
+        attempt: state.attempt + 1,
+        status: 'manual_fallback',
+        retainedPhotoUri: event.photoUri,
         suggestedValue: null,
       };
-    }
 
     case 'PERMISSION_DENIED':
       // Never a dead end: go straight to manual entry, no photo.

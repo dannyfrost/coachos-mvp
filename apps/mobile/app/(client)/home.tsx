@@ -1365,6 +1365,23 @@ export default function HomeScreen() {
     setCollapsed((prev) => !prev);
   };
 
+  // Coach message preview starts as a one-line teaser — expands in place
+  // on tap instead of navigating straight to /messages, so glancing at
+  // the home screen doesn't cost two lines of vertical space by default.
+  const [coachPreviewExpanded, setCoachPreviewExpanded] = useState(false);
+  const toggleCoachPreview = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setCoachPreviewExpanded((prev) => !prev);
+  };
+
+  // Meal + Questions are logged less often than Steps/Weight — collapsed
+  // by default behind one summary row to keep the Today panel short.
+  const [todayExtrasCollapsed, setTodayExtrasCollapsed] = useState(true);
+  const toggleTodayExtras = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setTodayExtrasCollapsed((prev) => !prev);
+  };
+
   // ── Greeting calculations ──
   const hour = new Date().getHours();
   const greetingText =
@@ -1507,8 +1524,27 @@ export default function HomeScreen() {
           />
         ) : (
           <>
-            {/* ── Coach Message Preview Card ── */}
-            {latestMessage && (
+            {/* ── Coach Message Preview Card — one-line teaser by
+                default, tap to expand; expanded state opens the full
+                conversation on a second tap. ── */}
+            {latestMessage && !coachPreviewExpanded && (
+              <TouchableOpacity
+                onPress={toggleCoachPreview}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Coach message preview, collapsed. Tap to expand"
+                accessibilityState={{ expanded: false }}
+                style={[styles.coachCard, styles.coachCardCollapsed]}
+              >
+                <Avatar initials={coachInitials} size={28} />
+                <Text style={styles.coachTeaserText} numberOfLines={1}>
+                  <Text style={styles.coachNameText}>{coachName}: </Text>
+                  {latestMessage.content}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={T.muted} />
+              </TouchableOpacity>
+            )}
+            {latestMessage && coachPreviewExpanded && (
               <TouchableOpacity
                 onPress={() => router.push('/messages')}
                 activeOpacity={0.85}
@@ -1528,6 +1564,14 @@ export default function HomeScreen() {
                     {latestMessage.content}
                   </Text>
                 </View>
+                <TouchableOpacity
+                  onPress={toggleCoachPreview}
+                  accessibilityRole="button"
+                  accessibilityLabel="Collapse coach message preview"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="chevron-up" size={16} color={T.muted} />
+                </TouchableOpacity>
               </TouchableOpacity>
             )}
 
@@ -1876,23 +1920,6 @@ export default function HomeScreen() {
                   </View>
                 )}
 
-              {weightOcrState.status === 'retake_prompt' && (
-                <View style={styles.retakeBanner}>
-                  <Text style={styles.retakeBannerText}>
-                    {weightPhotoTooSmall
-                      ? "That photo's too small to read clearly — try getting closer or better lighting."
-                      : "Couldn't read the number — try again?"}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={handleFromPhotoPress}
-                    accessibilityRole="button"
-                    accessibilityLabel="Retake weight photo"
-                  >
-                    <Text style={styles.retakeBannerAction}>Retake</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
               {weightOcrState.status === 'manual_fallback' && (
                 <Text style={styles.manualFallbackHint}>
                   {weightPhotoTooSmall
@@ -1904,6 +1931,31 @@ export default function HomeScreen() {
 
               <View style={styles.panelDivider} />
 
+              {/* Meal + Questions are logged less often than Steps/Weight
+                  — collapsed by default behind this summary row so the
+                  Today panel doesn't default to a long scroll. */}
+              <TouchableOpacity
+                onPress={toggleTodayExtras}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Meal and questions, ${
+                  todayExtrasCollapsed ? 'collapsed' : 'expanded'
+                }. Tap to ${todayExtrasCollapsed ? 'expand' : 'collapse'}`}
+                accessibilityState={{ expanded: !todayExtrasCollapsed }}
+                style={styles.extrasHeaderRow}
+              >
+                <Text style={styles.extrasHeaderText}>
+                  Meal & Questions · {kcalLeft} kcal left
+                </Text>
+                <Ionicons
+                  name={todayExtrasCollapsed ? 'chevron-down' : 'chevron-up'}
+                  size={18}
+                  color={T.muted}
+                />
+              </TouchableOpacity>
+
+              {!todayExtrasCollapsed && (
+              <>
               {/* Subsection 3: Meal */}
               <View style={styles.panelSubsection}>
               <View style={styles.formCardHeader}>
@@ -2107,6 +2159,8 @@ export default function HomeScreen() {
                 textAlignVertical="top"
               />
               </View>
+              </>
+              )}
             </Card>
 
             {submitError !== null && (
@@ -2258,6 +2312,17 @@ const styles = StyleSheet.create({
   coachCardContent: {
     flex: 1,
     minWidth: 0,
+  },
+  coachCardCollapsed: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  coachTeaserText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    color: T.onSurfaceVar,
+    fontFamily: fontFamily.bodyRegular,
   },
   coachCardHeaderRow: {
     flexDirection: 'row',
@@ -2439,6 +2504,17 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: T.border,
     marginVertical: 16,
+  },
+  extrasHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  extrasHeaderText: {
+    fontSize: 13,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    color: T.onSurface,
   },
   formCardHeader: {
     flexDirection: 'row',

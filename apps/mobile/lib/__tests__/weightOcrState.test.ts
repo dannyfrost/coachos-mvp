@@ -16,18 +16,18 @@ describe('reduceWeightOcrState', () => {
     expect(next.retainedPhotoUri).toBe('file://photo1.jpg');
   });
 
-  it('attempt 1 failure: shows a retake prompt and discards the photo', () => {
+  it('attempt 1 failure: falls back to manual entry immediately, photo retained as proof', () => {
     const next = reduceWeightOcrState(initialWeightOcrState, {
       type: 'OCR_FAILURE',
       photoUri: 'file://photo1.jpg',
     });
     expect(next.attempt).toBe(1);
-    expect(next.status).toBe('retake_prompt');
-    expect(next.retainedPhotoUri).toBeNull();
+    expect(next.status).toBe('manual_fallback');
+    expect(next.retainedPhotoUri).toBe('file://photo1.jpg');
     expect(next.suggestedValue).toBeNull();
   });
 
-  it('attempt 2 success (after a first failure): suggests the value', () => {
+  it('success after a prior failure: suggests the value again', () => {
     const afterFirstFailure = reduceWeightOcrState(initialWeightOcrState, {
       type: 'OCR_FAILURE',
       photoUri: 'file://photo1.jpg',
@@ -43,22 +43,7 @@ describe('reduceWeightOcrState', () => {
     expect(next.retainedPhotoUri).toBe('file://photo2.jpg');
   });
 
-  it('attempt 2 failure: falls back to manual entry and retains the attempt-2 photo', () => {
-    const afterFirstFailure = reduceWeightOcrState(initialWeightOcrState, {
-      type: 'OCR_FAILURE',
-      photoUri: 'file://photo1.jpg',
-    });
-    const next = reduceWeightOcrState(afterFirstFailure, {
-      type: 'OCR_FAILURE',
-      photoUri: 'file://photo2.jpg',
-    });
-    expect(next.attempt).toBe(2);
-    expect(next.status).toBe('manual_fallback');
-    expect(next.retainedPhotoUri).toBe('file://photo2.jpg');
-    expect(next.suggestedValue).toBeNull();
-  });
-
-  it('does not retry a third time — a third OCR_FAILURE stays in manual_fallback', () => {
+  it('repeated failures stay in manual_fallback, always retaining the latest photo', () => {
     let state = initialWeightOcrState;
     state = reduceWeightOcrState(state, { type: 'OCR_FAILURE', photoUri: 'a' });
     state = reduceWeightOcrState(state, { type: 'OCR_FAILURE', photoUri: 'b' });
