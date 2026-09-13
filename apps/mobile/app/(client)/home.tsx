@@ -568,24 +568,32 @@ export default function HomeScreen() {
   // this app's real tester device (Android 13) needs it. Returns null
   // when this source has nothing usable, so the caller can try the next
   // tier without needing to know which source it just tried.
-  const tryHealthConnectSteps = async (): Promise<number | null> => {
+  // Returns the read-source's own status string alongside the value —
+  // not just number|null — so a diagnostic log can show WHY a tier came
+  // back empty (unavailable/permission_denied/no_data/error), not just
+  // that it did. Collapsing to null earlier was fine for the sync
+  // decision but threw away exactly what's needed to debug a stuck KPI
+  // from logcat.
+  type StepsAttempt = { steps: number | null; status: string };
+
+  const tryHealthConnectSteps = async (): Promise<StepsAttempt> => {
     const available = await isHealthConnectAvailable();
-    if (!available) return null;
+    if (!available) return { steps: null, status: 'unavailable' };
     let granted = await hasHealthConnectStepsPermission();
     if (!granted) granted = await requestHealthConnectStepsPermission();
-    if (!granted) return null;
+    if (!granted) return { steps: null, status: 'permission_denied' };
     const result = await readHealthConnectSteps();
-    return result.status === 'ok' ? result.steps : null;
+    return { steps: result.status === 'ok' ? result.steps : null, status: result.status };
   };
 
-  const tryPedometerSteps = async (): Promise<number | null> => {
+  const tryPedometerSteps = async (): Promise<StepsAttempt> => {
     const available = await isPedometerAvailable();
-    if (!available) return null;
+    if (!available) return { steps: null, status: 'unavailable' };
     let granted = await hasStepsPermission();
     if (!granted) granted = await requestStepsPermission();
-    if (!granted) return null;
+    if (!granted) return { steps: null, status: 'permission_denied' };
     const result = await readTodaySteps();
-    return result.status === 'ok' ? result.steps : null;
+    return { steps: result.status === 'ok' ? result.steps : null, status: result.status };
   };
 
   const syncSteps = useCallback(
@@ -613,16 +621,28 @@ export default function HomeScreen() {
           return;
         }
 
-        let steps = await tryHealthConnectSteps();
+        const hcAttempt = await tryHealthConnectSteps();
+        let steps = hcAttempt.steps;
         let source: 'health_connect' | 'pedometer' | null = steps !== null ? 'health_connect' : null;
+        let pedometerAttempt: StepsAttempt | null = null;
         if (steps === null) {
-          steps = await tryPedometerSteps();
+          pedometerAttempt = await tryPedometerSteps();
+          steps = pedometerAttempt.steps;
           if (steps !== null) source = 'pedometer';
         }
 
-        if (__DEV__) {
-          console.log('[stepsForegroundSync]', { today, steps, source, manual });
-        }
+        // Unconditional, not __DEV__-gated — __DEV__ is false in this
+        // preview/production build, so a gated log would never surface
+        // in a logcat pull from a pilot device (same reasoning as
+        // weightOcr.ts's failure log).
+        console.log('[stepsForegroundSync]', {
+          today,
+          healthConnect: hcAttempt.status,
+          pedometer: pedometerAttempt?.status ?? 'skipped',
+          steps,
+          source,
+          manual,
+        });
 
         if (steps === null) {
           // Neither tier had anything usable — this is what should
@@ -641,16 +661,14 @@ export default function HomeScreen() {
           const { error } = await supabase.rpc('update_today_log', { p_steps: steps });
           if (error) {
             if (manual) setStepsSyncError(true);
-            if (__DEV__) console.log('[stepsForegroundSync] update_today_log failed', error);
+            console.log('[stepsForegroundSync] update_today_log failed', error);
           }
         }
 
         await registerStepsBackgroundTask();
       } catch (err) {
         if (manual) setStepsSyncError(true);
-        if (__DEV__) {
-          console.log('[stepsForegroundSync] unexpected error', err);
-        }
+        console.log('[stepsForegroundSync] unexpected error', err);
         // Never let steps auto-sync crash or block the Daily Log.
       } finally {
         stepsSyncInFlightRef.current = false;
@@ -666,14 +684,14 @@ export default function HomeScreen() {
   // simpler guard already used elsewhere on this screen: skip when the
   // field is dirty (mid-edit) or already has a value (OCR or a prior
   // manual entry today) — Health Connect only ever fills an EMPTY field.
-  const tryHealthConnectWeight = async (): Promise<number | null> => {
+  const tryHealthConnectWeight = async (): Promise<{ weightKg: number | null; status: string }> => {
     const available = await isHealthConnectAvailableForWeight();
-    if (!available) return null;
+    if (!available) return { weightKg: null, status: 'unavailable' };
     let granted = await hasHealthConnectWeightPermission();
     if (!granted) granted = await requestHealthConnectWeightPermission();
-    if (!granted) return null;
+    if (!granted) return { weightKg: null, status: 'permission_denied' };
     const result = await readHealthConnectWeight();
-    return result.status === 'ok' ? result.weightKg : null;
+    return { weightKg: result.status === 'ok' ? result.weightKg : null, status: result.status };
   };
 
   const syncWeight = useCallback(async () => {
@@ -682,10 +700,11 @@ export default function HomeScreen() {
     if (dirtyFieldsRef.current.weight || weightRef.current.trim() !== '') return;
     weightSyncInFlightRef.current = true;
     try {
-      const weightKg = await tryHealthConnectWeight();
-      if (__DEV__) {
-        console.log('[weightForegroundSync]', { weightKg });
-      }
+      const attempt = await tryHealthConnectWeight();
+      const weightKg = attempt.weightKg;
+      // Unconditional, not __DEV__-gated — see stepsForegroundSync's log
+      // just above for why a gated log never surfaces in a preview build.
+      console.log('[weightForegroundSync]', { healthConnect: attempt.status, weightKg });
       if (weightKg === null) return;
       // Re-check right before writing — an OCR read or manual keystroke
       // could have landed while the Health Connect call was in flight.
@@ -696,13 +715,11 @@ export default function HomeScreen() {
       setSubmitSuccess(false);
       const supabase = createMobileSupabaseClient();
       const { error } = await supabase.rpc('update_today_log', { p_weight: weightKg });
-      if (error && __DEV__) {
+      if (error) {
         console.log('[weightForegroundSync] update_today_log failed', error);
       }
     } catch (err) {
-      if (__DEV__) {
-        console.log('[weightForegroundSync] unexpected error', err);
-      }
+      console.log('[weightForegroundSync] unexpected error', err);
       // Never let weight auto-sync crash or block the Daily Log.
     } finally {
       weightSyncInFlightRef.current = false;
