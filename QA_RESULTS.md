@@ -70,6 +70,7 @@ Repeated "Could not load your data" on Home/Meals/Settings, and a login attempt 
 | SEC-04 | Debug bypasses / embedded test accounts | PASS | P0 | No `__DEV__`-gated auth bypass, no hardcoded test credentials found in shipped mobile code. |
 | SEC-05 | API route authorization (push register, spot-checked) | PASS | P0 | `/api/push/register` requires a valid Bearer token, validates it against Supabase Auth, checks role=client + status=active, and writes through an RLS-scoped client. |
 | SEC-06 | Cross-user data exposure (absence_events query, spot-checked) | PASS | P0 | `report.tsx`'s `absence_events` query has no explicit `client_id` filter in the JS, but DB-level RLS policy `absence_events_client_select_own` restricts SELECT to `client_id = auth.uid()` for the client role — defense-in-depth confirmed via migration `008_rls_policies.sql`, not a real exposure. |
+| STEPS-KPI-01 | Steps KPI pedometer fallback (tier 2, no Health Connect provider on device) | FAIL | P1 | Real physical device (Infinix X6528), Health Connect correctly `unavailable`, but pedometer tier returns `status: 'error'` — steps never populate. Permission granted, hardware sensor present and subscribed; root cause unconfirmed because the catch block in `lib/stepsPedometer.ts` swallows the actual error. See **BUG-015**. |
 
 ---
 
@@ -81,18 +82,20 @@ Two P1 correctness bugs (BUG-006, BUG-010) and one P1 UX/recovery bug (BUG-011) 
 
 ## QA Summary
 
-- Tests executed: 20 (across Launch, Auth/Session, Back, Forms, Permissions, Security)
+- Tests executed: 21 (across Launch, Auth/Session, Back, Forms, Permissions, Security, Sync — STEPS-KPI-01 added from a later real-device pass)
 - Passed: 16
-- Failed: 2 (AUTH-04 destination bug — fixed in source; PERM-02 — open, P2)
+- Failed: 3 (AUTH-04 destination bug — fixed in source; PERM-02 — open, P2; STEPS-KPI-01 — open, P1)
 - Blocked: 2 (NET-01, AUTH-06 — environment, not app defects) plus all data-dependent gates (3-6, 10-13, and live portions of 15)
 - P0: 0 open (4 historical P0s all fixed/verified earlier this session: phantom tabs, hooks-order crash, missing plugins, missing env vars)
-- P1: 0 open (3 found and fixed this pass: BUG-006 checklist logic, BUG-010 wrong post-auth redirect, BUG-011 non-functional retry)
+- P1: 1 open (BUG-015, steps pedometer fallback errors on real hardware) — plus 3 found and fixed this pass: BUG-006 checklist logic, BUG-010 wrong post-auth redirect, BUG-011 non-functional retry)
 - P2: 2 open (BUG-005 meal-form overflow, BUG-012 photo-picker permission UX) — both pre-existing/minor, not blocking
 - P3: 0
 
 ## Critical Failures
 
-None currently open. All P0/P1 issues found (this pass and earlier in the same development effort) have been fixed in source. **However, none of this pass's fixes (BUG-006, BUG-010, BUG-011) have been verified on a working device/emulator yet** — that verification is the critical remaining step before this build can be trusted.
+**BUG-015 (P1, open)** — Steps KPI pedometer fallback fails with `status: 'error'` on real hardware (Infinix X6528) when Health Connect is unavailable, so steps never auto-populate and every log silently falls through to manual/OCR entry. Root cause not yet identified (the actual error is swallowed, not logged) — see QA_BUGS.md.
+
+Otherwise none currently open. All other P0/P1 issues found (this pass and earlier in the same development effort) have been fixed in source. **However, none of this pass's fixes (BUG-006, BUG-010, BUG-011) have been verified on a working device/emulator yet** — that verification is the critical remaining step before this build can be trusted.
 
 Two items remain genuinely unresolved from earlier in this session, not yet re-attempted:
 - **BUG-007 (P1, ghosting/double-screen artifact)** — confirmed real on the physical tester's Android phone, root cause not yet identified. Investigation was never completed. This is the single most important open item, since it's a P1 confirmed on real hardware, and it is untouched by anything fixed in this pass.
@@ -104,14 +107,16 @@ Two items remain genuinely unresolved from earlier in this session, not yet re-a
 Rationale:
 1. Three P1s were found and fixed in source this session, but zero on-device re-verification has happened — CLAUDE.md's regression-test step ("Original reproduction, related workflow, existing automated tests, relevant smoke tests") cannot be honestly marked complete without it.
 2. BUG-007 (ghosting/double-screen, confirmed on real hardware) remains open with no root cause identified.
-3. Data-dependent gates (Core Workflow, Data Integrity, Network Failure, Notifications, Performance) could not be exercised at all this pass due to the BlueStacks environment defect documented above — these are exactly the gates CLAUDE.md weights highest ("This is the highest-priority functional test" — Gate 3).
-4. No crash-reporting/analytics is integrated (BUG-009) — a real gap for catching anything missed pre-launch.
+3. BUG-015 (steps pedometer fallback errors on real hardware) remains open with no root cause identified — the primary auto-sync path for steps does not work on at least one real device.
+4. Data-dependent gates (Core Workflow, Data Integrity, Network Failure, Notifications, Performance) could not be exercised at all this pass due to the BlueStacks environment defect documented above — these are exactly the gates CLAUDE.md weights highest ("This is the highest-priority functional test" — Gate 3).
+5. No crash-reporting/analytics is integrated (BUG-009) — a real gap for catching anything missed pre-launch.
 
 **Next steps to reach READY:**
 1. Cut a new EAS preview build containing this session's fixes (BUG-006, BUG-010, BUG-011).
 2. Re-run Gates 1-6 and 10-11 on either a freshly-provisioned emulator (not this BlueStacks instance) or the physical Android tester device.
 3. Reproduce and root-cause BUG-007 (ghosting) on the physical device, where it's confirmed real.
-4. Fix BUG-005 (meal-form overflow) and BUG-012 (photo-picker permission UX) if time allows — both P2, non-blocking.
+4. Root-cause BUG-015 (log the swallowed pedometer error, cut a build, re-test on the Infinix X6528).
+5. Fix BUG-005 (meal-form overflow) and BUG-012 (photo-picker permission UX) if time allows — both P2, non-blocking.
 
 ---
 

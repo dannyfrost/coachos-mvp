@@ -461,6 +461,51 @@ Regression test:
 
 ---
 
+## BUG-015 — Steps KPI pedometer fallback (tier 2) fails with `status: 'error'`, never populates steps
+
+Severity: P1 (important synchronization failure — Gate 3/4; the pedometer tier exists specifically as the fallback for devices without Health Connect, and on a real device without Health Connect it does not work)
+
+Status: OPEN
+
+Environment:
+- Device: Infinix X6528 (physical, real hardware — not an emulator), Android 13 (`TP1A.220624.014`), Unisoc/Sprd chipset
+- App build: EAS preview APK `d951c01f-c9cf-4350-8f1c-171c24d6827f` (built 2026-09-13, profile `preview`, SDK 54)
+- Network: WiFi ("Edd's"), stable
+- Account: client `idriss`, logged in via persisted session
+
+Steps:
+1. Install the preview build fresh (`adb install -r`) on a device with no Health Connect provider.
+2. Log in as a client, land on Home.
+3. Home screen's `useFocusEffect` fires `syncSteps()`/`syncWeight()` automatically (`apps/mobile/app/(client)/home.tsx:740-745`).
+
+Expected:
+- Tier 1 (Health Connect) correctly reports `unavailable` (no provider on this device).
+- Tier 2 (device pedometer, `expo-sensors` `Pedometer.getStepCountAsync`) should then read today's step count from the hardware step counter and populate the Steps field, per the fallback design documented in `lib/stepsPedometer.ts`'s own header comment.
+
+Actual:
+- Tier 2 also fails, but with `status: 'error'` (not `'unavailable'` or `'denied'`) — logcat:
+  ```
+  [stepsForegroundSync] { today: '2026-09-18', healthConnect: 'unavailable', pedometer: 'error', steps: null, source: null, manual: false }
+  ```
+- `steps` stays `null`, nothing is written to `update_today_log`, and the Home screen shows "STEPS — steps / No prev log" with an empty field. Every daily log on this device silently falls through to manual/OCR entry instead of auto-populating, with no user-visible explanation (no retry banner shown either, since that only appears after a *manual* sync attempt — see `home.tsx:1862`).
+- Confirmed this is not a permission or hardware problem: `dumpsys package com.coachos.app` shows `android.permission.ACTIVITY_RECOGNITION: granted=true`, and `dumpsys sensorservice` shows both `Step Detector`/`Step Counter` sensors present (`Sprd Group Ltd.`) with an active subscriber connection. So `isPedometerAvailable()` and `hasStepsPermission()` (both already true) are not what's failing — the exception is coming from inside `Pedometer.getStepCountAsync(start, end)` itself, in `lib/stepsPedometer.ts:118-122`.
+
+Evidence:
+- Full logcat capture (device-side): `[weightForegroundSync] { healthConnect: 'unavailable', weightKg: null }` immediately followed by the `[stepsForegroundSync]` line above.
+- On-device screenshot: Steps card shows "—  steps / No prev log" after the auto-sync ran.
+- `expo-sensors` version: `~15.0.8` (`apps/mobile/package.json`).
+
+Likely root cause:
+- Unconfirmed — the exact native/JS exception is swallowed. `lib/stepsPedometer.ts:129-131` does `catch { return { status: 'error' } }` with no logging of `err`/`err.message`, so there is currently no way to tell from a device log alone whether this is an `expo-sensors` Android bug in `getStepCountAsync`, an OEM (Unisoc/Sprd sensor HAL) quirk, or something else. This logging gap should be closed regardless of the root cause, since it blocks diagnosing this exact class of failure on any future device too.
+
+Fix:
+- Not yet applied. Proposed next step: temporarily log the caught error's message/stack in `stepsPedometer.ts`, cut a new preview build, and re-test on this same device to get the real error before deciding on a fix.
+
+Regression test:
+- Pending root cause. Once fixed, re-run the same steps on this Infinix X6528 (no Health Connect provider) and confirm `pedometer: 'ok'` with a real step count populates the field and reaches `update_today_log`.
+
+---
+
 # Part 2 — Coach Web Platform
 
 Per `.claude/CLAUDE_COACH_QA.md`. Bug IDs prefixed `CW-` to avoid collision with the mobile `BUG-` numbering above.
