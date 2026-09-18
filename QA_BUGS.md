@@ -465,7 +465,7 @@ Regression test:
 
 Severity: P1 (important synchronization failure — Gate 3/4; the pedometer tier exists specifically as the fallback for devices without Health Connect, and on a real device without Health Connect it does not work)
 
-Status: OPEN
+Status: IN PROGRESS — diagnostic logging deployed and built; root cause still unconfirmed pending an on-device retest to capture the actual caught error
 
 Environment:
 - Device: Infinix X6528 (physical, real hardware — not an emulator), Android 13 (`TP1A.220624.014`), Unisoc/Sprd chipset
@@ -499,10 +499,12 @@ Likely root cause:
 - Unconfirmed — the exact native/JS exception is swallowed. `lib/stepsPedometer.ts:129-131` does `catch { return { status: 'error' } }` with no logging of `err`/`err.message`, so there is currently no way to tell from a device log alone whether this is an `expo-sensors` Android bug in `getStepCountAsync`, an OEM (Unisoc/Sprd sensor HAL) quirk, or something else. This logging gap should be closed regardless of the root cause, since it blocks diagnosing this exact class of failure on any future device too.
 
 Fix:
-- Not yet applied. Proposed next step: temporarily log the caught error's message/stack in `stepsPedometer.ts`, cut a new preview build, and re-test on this same device to get the real error before deciding on a fix.
+- Diagnostic step applied, not a root-cause fix yet: `lib/stepsPedometer.ts`'s `readTodaySteps()` catch block now logs the caught error's `name`/`message` (or the raw value for a non-`Error` throw) unconditionally — not `__DEV__`-gated, since `__DEV__` is `false` in preview/production builds and a gated log never reaches a real-device logcat pull. `tsc --noEmit` clean.
+- EAS preview build `90969c08-98ef-41e9-ae48-473883202c60` (Android, profile `preview`, SDK 54, `com.coachos.app`) submitted with this change and **finished successfully** (queued 2026-09-18 14:09 UTC, finished 14:28 UTC — 19 min build time). Not yet installed/re-tested on the Infinix X6528.
+- Same build also carries three related-but-separate UX changes made this session, not part of BUG-015's root cause: (1) `runWeightOcr` now retries `recognizeText`/`extractWeightCandidate` up to 3x on the same photo (400ms gap, silent to the user, stops on first success) before falling back to the existing retake banner — addresses transient OCR read failures, not a bug found during QA; (2) the manual steps-refresh icon and the sync-error banner's "Retry" link were removed from `home.tsx`; (3) pull-to-refresh (`onRefresh`) now re-runs `syncSteps(true)` + `syncWeight()` alongside the existing silent data reload, so there is no dedicated sync/refresh button left on the Home screen — pulling down is now the only manual trigger.
 
 Regression test:
-- Pending root cause. Once fixed, re-run the same steps on this Infinix X6528 (no Health Connect provider) and confirm `pedometer: 'ok'` with a real step count populates the field and reaches `update_today_log`.
+- Pending: install build `90969c08-98ef-41e9-ae48-473883202c60` on the Infinix X6528 (no Health Connect provider), trigger the pedometer fallback (tab focus or pull-to-refresh), and pull logcat filtered on `[readTodaySteps] error` to capture the real exception name/message — that determines the actual root cause and next fix. Also re-verify: weight-OCR photo capture still succeeds normally end-to-end with the retry loop in place; pull-to-refresh visibly re-syncs steps/weight (not just reloads server data) with no leftover manual buttons on screen.
 
 ---
 
