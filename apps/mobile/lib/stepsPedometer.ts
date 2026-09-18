@@ -126,7 +126,15 @@ export async function readTodaySteps(): Promise<StepsReadResult> {
     }
 
     return { status: 'ok', steps: result.steps };
-  } catch {
+  } catch (err) {
+    // Unconditional, not __DEV__-gated — __DEV__ is false in preview/production
+    // builds, so a gated log would never surface in a logcat pull from a real
+    // device (same reasoning as home.tsx's foreground-sync logs). Without this,
+    // a caught error here is completely invisible outside a debugger.
+    console.log(
+      '[readTodaySteps] error',
+      err instanceof Error ? { name: err.name, message: err.message } : err
+    );
     return { status: 'error' };
   }
 }

@@ -227,7 +227,6 @@ export default function HomeScreen() {
 
   const [weightOcrState, setWeightOcrState] = useState(initialWeightOcrState);
   const [weightOcrBusy, setWeightOcrBusy] = useState(false);
-  const [stepsSyncBusy, setStepsSyncBusy] = useState(false);
   const [stepsSyncUnavailable, setStepsSyncUnavailable] = useState(false);
   const [stepsSyncError, setStepsSyncError] = useState(false);
   const [stepsOcrState, setStepsOcrState] = useState(initialStepsOcrState);
@@ -237,6 +236,11 @@ export default function HomeScreen() {
   // know not to clobber a value a higher-trust tier already set.
   const [stepsSource, setStepsSource] = useState<'health_connect' | 'pedometer' | 'ocr' | null>(null);
   const [weightSource, setWeightSource] = useState<'health_connect' | 'ocr' | null>(null);
+  // TEMP DEBUG (device-debug session, 2026-09-17): console.log isn't
+  // reaching adb logcat on the installed preview build, so this on-screen
+  // banner is the only way to see tier statuses on a real device right
+  // now. Remove once the logcat pipe is understood/fixed.
+  const [syncDebugInfo, setSyncDebugInfo] = useState<string | null>(null);
   // True only for the most recent weight-OCR attempt that was skipped
   // (never even sent to ML Kit) because the picked photo's pixel
   // dimensions were below MIN_OCR_DIMENSION — the confirmed real-world
@@ -547,11 +551,6 @@ export default function HomeScreen() {
   }, []);
 
   const [refreshing, setRefreshing] = useState(false);
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadData({ silent: true });
-    setRefreshing(false);
-  }, [loadData]);
 
   // Reads the device's live step count and, if there's a newer reading,
   // syncs it into the Steps field + server. Runs automatically on every
@@ -606,7 +605,6 @@ export default function HomeScreen() {
       if (stepsSyncInFlightRef.current) return;
       stepsSyncInFlightRef.current = true;
       if (manual) {
-        setStepsSyncBusy(true);
         setStepsSyncError(false);
       }
       try {
@@ -643,6 +641,9 @@ export default function HomeScreen() {
           source,
           manual,
         });
+        setSyncDebugInfo(
+          `steps: hc=${hcAttempt.status} ped=${pedometerAttempt?.status ?? 'skipped'} steps=${steps} src=${source ?? 'none'} manual=${manual}`
+        );
 
         if (steps === null) {
           // Neither tier had anything usable — this is what should
@@ -669,10 +670,10 @@ export default function HomeScreen() {
       } catch (err) {
         if (manual) setStepsSyncError(true);
         console.log('[stepsForegroundSync] unexpected error', err);
+        setSyncDebugInfo(`steps: unexpected error: ${err instanceof Error ? err.message : String(err)}`);
         // Never let steps auto-sync crash or block the Daily Log.
       } finally {
         stepsSyncInFlightRef.current = false;
-        if (manual) setStepsSyncBusy(false);
       }
     },
     [userId]
@@ -705,6 +706,7 @@ export default function HomeScreen() {
       // Unconditional, not __DEV__-gated — see stepsForegroundSync's log
       // just above for why a gated log never surfaces in a preview build.
       console.log('[weightForegroundSync]', { healthConnect: attempt.status, weightKg });
+      setSyncDebugInfo(`weight: hc=${attempt.status} kg=${weightKg ?? 'null'}`);
       if (weightKg === null) return;
       // Re-check right before writing — an OCR read or manual keystroke
       // could have landed while the Health Connect call was in flight.
@@ -720,11 +722,25 @@ export default function HomeScreen() {
       }
     } catch (err) {
       console.log('[weightForegroundSync] unexpected error', err);
+      setSyncDebugInfo(`weight: unexpected error: ${err instanceof Error ? err.message : String(err)}`);
       // Never let weight auto-sync crash or block the Daily Log.
     } finally {
       weightSyncInFlightRef.current = false;
     }
   }, [userId]);
+
+  // Pull-to-refresh is the only sync/refresh trigger on this screen (no
+  // dedicated button) — besides reloading server data, it re-runs the
+  // device-side steps/weight sync tiers (Health Connect / Pedometer), the
+  // same calls that already run automatically on tab focus. Runs them
+  // alongside loadData rather than sequenced after it, matching how the
+  // useFocusEffect below already runs them concurrently on every tab focus
+  // without issue.
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([loadData({ silent: true }), syncSteps(true), syncWeight()]);
+    setRefreshing(false);
+  }, [loadData, syncSteps, syncWeight]);
 
   useFocusEffect(
     useCallback(() => {
@@ -750,36 +766,58 @@ export default function HomeScreen() {
   // usable photo — reject it before wasting an ML Kit call.
   const MIN_OCR_DIMENSION = 500;
 
+  // A failed read (thrown error or no candidate found) can be transient —
+  // e.g. the native ML Kit call glitching — rather than the photo genuinely
+  // being unreadable, so the same picture gets up to 3 attempts, with a
+  // short gap between them, before giving up. Stays silent to the user
+  // throughout (single spinner for the whole loop, no per-attempt UI) —
+  // only the final outcome (success or the existing retake banner) shows.
+  const WEIGHT_OCR_MAX_ATTEMPTS = 3;
+  const WEIGHT_OCR_RETRY_DELAY_MS = 400;
+
   const runWeightOcr = async (photoUri: string) => {
     setWeightPhotoTooSmall(false);
     setWeightOcrBusy(true);
     try {
-      const ocrResult = await recognizeText(photoUri, 'latin');
-      const value = extractWeightCandidate(ocrResult);
+      let lastRawText: string | null = null;
+      for (let attempt = 1; attempt <= WEIGHT_OCR_MAX_ATTEMPTS; attempt++) {
+        try {
+          const ocrResult = await recognizeText(photoUri, 'latin');
+          const value = extractWeightCandidate(ocrResult);
 
-      if (value === null) {
-        // Unconditional (not __DEV__-gated — __DEV__ is false in this
-        // preview/production build, so a gated log would never surface):
-        // logs what ML Kit recognized so a real failure can be diagnosed
-        // from logcat instead of guessed at. Truncated to bound exposure
-        // of whatever else the camera picked up in frame.
-        console.warn(
-          '[weight-ocr] no candidate found, raw OCR text (truncated):',
-          JSON.stringify(ocrResult.text).slice(0, 200)
-        );
-        setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
-        return;
+          if (value !== null) {
+            setWeightOcrState((s) =>
+              reduceWeightOcrState(s, { type: 'OCR_SUCCESS', photoUri, value })
+            );
+            setWeight(String(value));
+            setWeightSource('ocr');
+            dirtyFieldsRef.current.weight = true;
+            setSubmitSuccess(false);
+            return;
+          }
+
+          lastRawText = ocrResult.text;
+        } catch (err) {
+          console.warn(
+            `[weight-ocr] recognizeText failed (attempt ${attempt}/${WEIGHT_OCR_MAX_ATTEMPTS}):`,
+            err instanceof Error ? err.message : err
+          );
+        }
+
+        if (attempt < WEIGHT_OCR_MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, WEIGHT_OCR_RETRY_DELAY_MS));
+        }
       }
 
-      setWeightOcrState((s) =>
-        reduceWeightOcrState(s, { type: 'OCR_SUCCESS', photoUri, value })
+      // Unconditional (not __DEV__-gated — __DEV__ is false in this
+      // preview/production build, so a gated log would never surface):
+      // logs what ML Kit recognized on the last attempt so a real failure
+      // can be diagnosed from logcat instead of guessed at. Truncated to
+      // bound exposure of whatever else the camera picked up in frame.
+      console.warn(
+        `[weight-ocr] no candidate found after ${WEIGHT_OCR_MAX_ATTEMPTS} attempts, last raw OCR text (truncated):`,
+        JSON.stringify(lastRawText).slice(0, 200)
       );
-      setWeight(String(value));
-      setWeightSource('ocr');
-      dirtyFieldsRef.current.weight = true;
-      setSubmitSuccess(false);
-    } catch (err) {
-      console.warn('[weight-ocr] recognizeText failed:', err instanceof Error ? err.message : err);
       setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
     } finally {
       setWeightOcrBusy(false);
@@ -1793,6 +1831,14 @@ export default function HomeScreen() {
                 <Text style={styles.formCardTitle}>STEPS &amp; WEIGHT</Text>
               </View>
 
+              {syncDebugInfo && (
+                <View style={{ backgroundColor: '#3a2a00', borderRadius: 8, padding: 8, marginBottom: 8 }}>
+                  <Text style={{ color: '#ffcc66', fontSize: 11, fontFamily: 'monospace' }}>
+                    DEBUG (temp): {syncDebugInfo}
+                  </Text>
+                </View>
+              )}
+
               <FieldLabel>Steps</FieldLabel>
               <View style={styles.weightRow}>
                 <TextInput
@@ -1811,19 +1857,6 @@ export default function HomeScreen() {
                   keyboardType="numeric"
                   returnKeyType="next"
                 />
-                <TouchableOpacity
-                  style={styles.weightCameraButton}
-                  onPress={() => syncSteps(true)}
-                  disabled={stepsSyncBusy || submitSuccess}
-                  accessibilityRole="button"
-                  accessibilityLabel="Refresh steps from device"
-                >
-                  {stepsSyncBusy ? (
-                    <ActivityIndicator size="small" color={T.primary} />
-                  ) : (
-                    <Ionicons name="refresh" size={20} color={T.primary} />
-                  )}
-                </TouchableOpacity>
               </View>
               {steps.length > 0 &&
                 stepsOcrState.suggestedValue !== null &&
@@ -1841,14 +1874,9 @@ export default function HomeScreen() {
               )}
               {stepsSyncError && (
                 <View style={styles.retakeBanner}>
-                  <Text style={styles.retakeBannerText}>Couldn't get steps from your phone — try again?</Text>
-                  <TouchableOpacity
-                    onPress={() => syncSteps(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Retry steps sync"
-                  >
-                    <Text style={styles.retakeBannerAction}>Retry</Text>
-                  </TouchableOpacity>
+                  <Text style={styles.retakeBannerText}>
+                    Couldn't get steps from your phone — pull down to try again.
+                  </Text>
                 </View>
               )}
 
