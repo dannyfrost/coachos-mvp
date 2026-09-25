@@ -126,7 +126,19 @@ export async function readTodaySteps(): Promise<StepsReadResult> {
     }
 
     return { status: 'ok', steps: result.steps };
-  } catch {
+  } catch (err) {
+    // BUG-015: pedometer returns 'error' on some OEM devices (Infinix
+    // X6528 / Unisoc) even with ACTIVITY_RECOGNITION granted and Step
+    // Counter/Detector sensors present. The real exception was previously
+    // swallowed by a bare catch, so root cause was undiagnosable. Log it
+    // unconditionally (NOT __DEV__-gated) so it survives into preview/prod
+    // logcat.
+    const name = err instanceof Error ? err.name : 'Unknown';
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[stepsPedometer] readTodaySteps error: ${name}: ${message}`);
+    if (err instanceof Error && err.stack) {
+      console.warn(`[stepsPedometer] stack: ${err.stack}`);
+    }
     return { status: 'error' };
   }
 }
