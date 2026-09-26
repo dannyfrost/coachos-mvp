@@ -112,6 +112,7 @@ export async function preprocessWeightPhoto(uri: string): Promise<string | null>
 
     const png = outImage.encodeToBytes(ImageFormat.PNG, 100);
     const file = new File(Paths.cache, `weight_ocr_${Date.now()}.png`);
+    file.create({ intermediates: true, overwrite: true });
     file.write(png);
     return file.uri;
   } catch {
