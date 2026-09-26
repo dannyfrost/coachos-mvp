@@ -1,4 +1,7 @@
-const { withAndroidManifest, AndroidConfig } = require('@expo/config-plugins');
+// Import via `expo/config-plugins` (not `@expo/config-plugins`): in this pnpm
+// monorepo the scoped package is not directly resolvable from an app-level
+// plugin file, but `expo` is a direct dependency and re-exports the same API.
+const { withAndroidManifest } = require('expo/config-plugins');
 
 /**
  * react-native-health-connect's own config plugin only registers the
