@@ -68,6 +68,7 @@ import {
   getYesterdayISO,
 } from '../../lib/stats';
 import { extractWeightCandidate } from '../../lib/weightOcr';
+import { preprocessWeightPhoto } from '../../lib/weightImagePreprocess';
 import { extractStepsCandidate } from '../../lib/stepsOcr';
 import { initialStepsOcrState, reduceStepsOcrState } from '../../lib/stepsOcrState';
 import {
@@ -754,8 +755,18 @@ export default function HomeScreen() {
     setWeightPhotoTooSmall(false);
     setWeightOcrBusy(true);
     try {
-      const ocrResult = await recognizeText(photoUri, 'latin');
-      const value = extractWeightCandidate(ocrResult);
+      // Seven-segment scale displays are unreadable to ML Kit as-shot (see
+      // lib/weightImagePreprocess.ts). Preprocess to high-contrast
+      // white-on-black first; if preprocessing produced an image, OCR that,
+      // and only fall back to the raw photo if the processed one yields no
+      // candidate. The ORIGINAL photoUri is what we retain/upload either way.
+      const processedUri = await preprocessWeightPhoto(photoUri);
+      let ocrResult = await recognizeText(processedUri ?? photoUri, 'latin');
+      let value = extractWeightCandidate(ocrResult);
+      if (value === null && processedUri) {
+        ocrResult = await recognizeText(photoUri, 'latin');
+        value = extractWeightCandidate(ocrResult);
+      }
 
       if (value === null) {
         // Unconditional (not __DEV__-gated — __DEV__ is false in this
