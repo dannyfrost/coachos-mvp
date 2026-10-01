@@ -51,8 +51,25 @@ export async function isHealthConnectAvailable(): Promise<boolean> {
   }
 }
 
+// react-native-health-connect requires initialize() to have run before ANY
+// other call (getGrantedPermissions / requestPermission included). Without
+// it those calls throw, which the catch blocks below swallow into `false` —
+// so the permission dialog never appears and steps silently stay
+// permission_denied. initialize() is idempotent, so calling it at the start
+// of each permission op is safe. (This was the real reason no Health Connect
+// allow-access prompt showed on device even after the manifest declared the
+// READ_STEPS permission.)
+async function ensureInitialized(): Promise<boolean> {
+  try {
+    return await withTimeout(initialize(), QUERY_TIMEOUT_MS, 'HealthConnect.initialize');
+  } catch {
+    return false;
+  }
+}
+
 export async function hasStepsPermission(): Promise<boolean> {
   try {
+    if (!(await ensureInitialized())) return false;
     const granted = await withTimeout(
       getGrantedPermissions(),
       QUERY_TIMEOUT_MS,
@@ -66,6 +83,7 @@ export async function hasStepsPermission(): Promise<boolean> {
 
 export async function requestStepsPermission(): Promise<boolean> {
   try {
+    if (!(await ensureInitialized())) return false;
     const granted = await withTimeout(
       requestPermission([STEPS_PERMISSION]),
       PERMISSION_DIALOG_TIMEOUT_MS,

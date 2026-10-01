@@ -37,6 +37,11 @@ describe('isHealthConnectAvailable', () => {
 });
 
 describe('hasWeightPermission / requestWeightPermission', () => {
+  // initialize() must succeed before any permission op (idempotent).
+  beforeEach(() => {
+    mockInitialize.mockResolvedValue(true);
+  });
+
   it('hasWeightPermission is true only when a read Weight grant is present', async () => {
     mockGetGrantedPermissions.mockResolvedValue([{ recordType: 'Weight', accessType: 'read' }]);
     await expect(hasWeightPermission()).resolves.toBe(true);
@@ -55,6 +60,12 @@ describe('hasWeightPermission / requestWeightPermission', () => {
   it('requestWeightPermission is false when the user denies the dialog', async () => {
     mockRequestPermission.mockResolvedValue([]);
     await expect(requestWeightPermission()).resolves.toBe(false);
+  });
+
+  it('requestWeightPermission returns false and never calls requestPermission when initialize fails', async () => {
+    mockInitialize.mockResolvedValue(false);
+    await expect(requestWeightPermission()).resolves.toBe(false);
+    expect(mockRequestPermission).not.toHaveBeenCalled();
   });
 });
 

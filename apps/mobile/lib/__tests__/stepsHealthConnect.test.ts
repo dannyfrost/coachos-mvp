@@ -44,6 +44,12 @@ describe('isHealthConnectAvailable', () => {
 });
 
 describe('hasStepsPermission / requestStepsPermission', () => {
+  // initialize() must succeed before any permission op; it is idempotent and
+  // called at the start of each. See the init-failure tests below.
+  beforeEach(() => {
+    mockInitialize.mockResolvedValue(true);
+  });
+
   it('hasStepsPermission is true only when a read Steps grant is present', async () => {
     mockGetGrantedPermissions.mockResolvedValue([{ recordType: 'Steps', accessType: 'read' }]);
     await expect(hasStepsPermission()).resolves.toBe(true);
@@ -62,6 +68,21 @@ describe('hasStepsPermission / requestStepsPermission', () => {
   it('requestStepsPermission is false when the user denies the dialog', async () => {
     mockRequestPermission.mockResolvedValue([]);
     await expect(requestStepsPermission()).resolves.toBe(false);
+  });
+
+  // Regression guard for the no-dialog bug: if initialize() has not run (or
+  // fails) the permission ops must not proceed — requestPermission must never
+  // be called against an uninitialized client (which silently shows no dialog).
+  it('requestStepsPermission returns false and never calls requestPermission when initialize fails', async () => {
+    mockInitialize.mockResolvedValue(false);
+    await expect(requestStepsPermission()).resolves.toBe(false);
+    expect(mockRequestPermission).not.toHaveBeenCalled();
+  });
+
+  it('hasStepsPermission returns false when initialize fails', async () => {
+    mockInitialize.mockResolvedValue(false);
+    await expect(hasStepsPermission()).resolves.toBe(false);
+    expect(mockGetGrantedPermissions).not.toHaveBeenCalled();
   });
 });
 

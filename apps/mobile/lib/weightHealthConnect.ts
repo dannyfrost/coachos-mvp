@@ -41,8 +41,20 @@ export async function isHealthConnectAvailable(): Promise<boolean> {
   }
 }
 
+// See stepsHealthConnect.ts: initialize() must run before getGrantedPermissions
+// or requestPermission, or they throw and the permission dialog never shows.
+// Idempotent, so safe to call at the start of each permission op.
+async function ensureInitialized(): Promise<boolean> {
+  try {
+    return await withTimeout(initialize(), QUERY_TIMEOUT_MS, 'HealthConnect.initialize(weight)');
+  } catch {
+    return false;
+  }
+}
+
 export async function hasWeightPermission(): Promise<boolean> {
   try {
+    if (!(await ensureInitialized())) return false;
     const granted = await withTimeout(
       getGrantedPermissions(),
       QUERY_TIMEOUT_MS,
@@ -56,6 +68,7 @@ export async function hasWeightPermission(): Promise<boolean> {
 
 export async function requestWeightPermission(): Promise<boolean> {
   try {
+    if (!(await ensureInitialized())) return false;
     const granted = await withTimeout(
       requestPermission([WEIGHT_PERMISSION]),
       PERMISSION_DIALOG_TIMEOUT_MS,

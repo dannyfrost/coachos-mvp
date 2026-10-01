@@ -127,14 +127,18 @@ export async function readTodaySteps(): Promise<StepsReadResult> {
 
     return { status: 'ok', steps: result.steps };
   } catch (err) {
-    // Unconditional, not __DEV__-gated — __DEV__ is false in preview/production
-    // builds, so a gated log would never surface in a logcat pull from a real
-    // device (same reasoning as home.tsx's foreground-sync logs). Without this,
-    // a caught error here is completely invisible outside a debugger.
-    console.log(
-      '[readTodaySteps] error',
-      err instanceof Error ? { name: err.name, message: err.message } : err
-    );
+    // BUG-015: pedometer returns 'error' on some OEM devices (Infinix
+    // X6528 / Unisoc) even with ACTIVITY_RECOGNITION granted and Step
+    // Counter/Detector sensors present. The real exception was previously
+    // swallowed by a bare catch, so root cause was undiagnosable. Log it
+    // unconditionally (NOT __DEV__-gated) so it survives into preview/prod
+    // logcat.
+    const name = err instanceof Error ? err.name : 'Unknown';
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[stepsPedometer] readTodaySteps error: ${name}: ${message}`);
+    if (err instanceof Error && err.stack) {
+      console.warn(`[stepsPedometer] stack: ${err.stack}`);
+    }
     return { status: 'error' };
   }
 }
