@@ -13,6 +13,12 @@
     "plugins": [
       "expo-router",
       "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Coaching to use the camera to photograph your scale display."
+        }
+      ],
       "expo-image-picker",
       "expo-notifications",
       [
