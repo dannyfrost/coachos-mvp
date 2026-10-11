@@ -1,5 +1,5 @@
 import { decideStepsSync } from '../stepsSync';
-import type { StepsReadResult } from '../stepsPedometer';
+import type { StepsReadResult } from '../stepsSync';
 
 const TODAY = '2026-08-29';
 

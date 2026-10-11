@@ -1,0 +1,9 @@
+{
+  "_comment": "Human-transcribed ground truth for the 4 original failing photos. These are pinned regression cases ONLY — never used to claim generalization (see docs/WEIGHT_OCR_LAUNCH_ASSESSMENT.md). The image bytes are NOT committed (client data); supply them to ingest.py via --regression. session_id values are best-effort (the photos came from different clients/scales).",
+  "labels": [
+    {"src_match": "19.01.44.jpeg",     "ground_truth": "81.70", "legible": true, "source": "camera",     "display_type": "reflective_lcd", "quality": ["low_contrast", "glare", "perspective"], "session_id": "reg-a"},
+    {"src_match": "19.01.44 (1).jpeg", "ground_truth": "79.75", "legible": true, "source": "camera",     "display_type": "reflective_lcd", "quality": ["low_contrast", "perspective"],          "session_id": "reg-b"},
+    {"src_match": "19.01.44 (2).jpeg", "ground_truth": "76.40", "legible": true, "source": "screenshot", "display_type": "reflective_lcd", "quality": ["low_contrast"],                         "session_id": "reg-c"},
+    {"src_match": "19.01.45.jpeg",     "ground_truth": "74.60", "legible": true, "source": "camera",     "display_type": "reflective_lcd", "quality": ["low_contrast", "perspective"],          "session_id": "reg-d"}
+  ]
+}

@@ -16,6 +16,7 @@ import {
   UIManager,
   ActionSheetIOS,
   Alert,
+  Linking,
 } from 'react-native';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -72,33 +73,21 @@ import { preprocessWeightPhoto } from '../../lib/weightImagePreprocess';
 import { extractStepsCandidate } from '../../lib/stepsOcr';
 import { initialStepsOcrState, reduceStepsOcrState } from '../../lib/stepsOcrState';
 import {
-  isPedometerAvailable,
-  hasStepsPermission,
-  requestStepsPermission,
-  readTodaySteps,
-} from '../../lib/stepsPedometer';
-import {
   isHealthConnectAvailable,
   hasStepsPermission as hasHealthConnectStepsPermission,
   requestStepsPermission as requestHealthConnectStepsPermission,
   readTodaySteps as readHealthConnectSteps,
 } from '../../lib/stepsHealthConnect';
-import {
-  isHealthConnectAvailable as isHealthConnectAvailableForWeight,
-  hasWeightPermission as hasHealthConnectWeightPermission,
-  requestWeightPermission as requestHealthConnectWeightPermission,
-  readLatestWeight as readHealthConnectWeight,
-} from '../../lib/weightHealthConnect';
 import { decideStepsSync } from '../../lib/stepsSync';
-import {
-  markManualOverrideToday,
-  isManualOverrideActiveToday,
-} from '../../lib/stepsManualOverride';
+import { getStepCollectionSupport } from '../../lib/stepsCapability';
+import { isManualOverrideActiveToday } from '../../lib/stepsManualOverride';
 import { registerStepsBackgroundTask } from '../../lib/stepsBackgroundTask';
 import {
   initialWeightOcrState,
   reduceWeightOcrState,
+  WEIGHT_PHOTO_MAX_ATTEMPTS,
 } from '../../lib/weightOcrState';
+import { weightSubmitError } from '../../lib/weightEvidence';
 import CompletionRing from '../../components/CompletionRing';
 
 const MEAL_OPTIONS = MEAL_TYPE_ORDER;
@@ -124,6 +113,7 @@ type DailyLogRow = {
   questions: string | null;
   steps: number | null;
   weight: number | null;
+  weight_photo_key: string | null;
 };
 
 type MessagePreview = {
@@ -218,30 +208,32 @@ export default function HomeScreen() {
   const [steps, setSteps] = useState('');
   const [weight, setWeight] = useState('');
   const [questions, setQuestions] = useState('');
-  // Mirrors `weight` for syncWeight to read without depending on it —
-  // otherwise every keystroke would recreate syncWeight and re-trigger
-  // useFocusEffect's re-subscription while the screen is still focused.
-  const weightRef = useRef(weight);
-  useEffect(() => {
-    weightRef.current = weight;
-  }, [weight]);
 
   const [weightOcrState, setWeightOcrState] = useState(initialWeightOcrState);
   const [weightOcrBusy, setWeightOcrBusy] = useState(false);
+  // Camera permission was denied — weight still needs a photo, so this
+  // drives a recovery hint (open Settings / pick from library) rather
+  // than unlocking manual entry. See handleWeightCameraPress.
+  const [weightCameraDenied, setWeightCameraDenied] = useState(false);
+  // Weight photo key already stored on today's server row (when editing
+  // an entry logged earlier). Counts as existing evidence so re-saving
+  // the same day's weight doesn't demand a fresh photo.
+  const [existingWeightPhotoKey, setExistingWeightPhotoKey] = useState<string | null>(null);
   const [stepsSyncUnavailable, setStepsSyncUnavailable] = useState(false);
   const [stepsSyncError, setStepsSyncError] = useState(false);
+  // Why no Health Connect value is available — drives honest fallback copy so
+  // a device that CAN'T auto-track steps reads differently from a transient
+  // "no data yet". Never a successful-zero: a null read never writes a value.
+  const [stepsReason, setStepsReason] = useState<
+    'unsupported' | 'permission_denied' | 'no_data' | 'error' | null
+  >(null);
   const [stepsOcrState, setStepsOcrState] = useState(initialStepsOcrState);
   const [stepsOcrBusy, setStepsOcrBusy] = useState(false);
   // Which tier actually produced the current value — client-side only,
   // never persisted (no DB/RPC change). Lets a later, lower-trust tier
   // know not to clobber a value a higher-trust tier already set.
-  const [stepsSource, setStepsSource] = useState<'health_connect' | 'pedometer' | 'ocr' | null>(null);
+  const [stepsSource, setStepsSource] = useState<'health_connect' | 'ocr' | null>(null);
   const [weightSource, setWeightSource] = useState<'health_connect' | 'ocr' | null>(null);
-  // TEMP DEBUG (device-debug session, 2026-09-17): console.log isn't
-  // reaching adb logcat on the installed preview build, so this on-screen
-  // banner is the only way to see tier statuses on a real device right
-  // now. Remove once the logcat pipe is understood/fixed.
-  const [syncDebugInfo, setSyncDebugInfo] = useState<string | null>(null);
   // True only for the most recent weight-OCR attempt that was skipped
   // (never even sent to ML Kit) because the picked photo's pixel
   // dimensions were below MIN_OCR_DIMENSION — the confirmed real-world
@@ -255,10 +247,11 @@ export default function HomeScreen() {
   // only blocks a second MANUAL tap; it doesn't see an in-flight automatic
   // sync, so two calls could otherwise race and both write to the server.
   const stepsSyncInFlightRef = useRef(false);
-  // Weight has no manual-override table (unlike steps) — the dirty-field
-  // guard plus "only fill when empty" below is sufficient since Health
-  // Connect weight sync is brand new and has no existing UI to preserve.
-  const weightSyncInFlightRef = useRef(false);
+  // Monotonic id for weight-OCR runs: a late callback from a superseded
+  // run (or one that finished after the user started typing) must not
+  // overwrite the field. Each run captures the current id at start and
+  // only applies its result if it's still the latest.
+  const weightOcrRunIdRef = useRef(0);
 
   // Meal state for Today's Log quick-add
   const [selectedMealType, setSelectedMealType] = useState<MealType | null>(null);
@@ -294,7 +287,6 @@ export default function HomeScreen() {
 
   // Field input refs for checklist scroll / focus
   const scrollViewRef = useRef<ScrollView>(null);
-  const stepsInputRef = useRef<TextInput>(null);
   const weightInputRef = useRef<TextInput>(null);
   const mealInputRef = useRef<TextInput>(null);
   const questionsInputRef = useRef<TextInput>(null);
@@ -331,11 +323,13 @@ export default function HomeScreen() {
     const { data: { session: sess } } = await supabase.auth.getSession();
 
     if (!sess?.user?.id) {
+      console.log('[stepsDbg] loadData:no-session -> /login', { silent: !!opts?.silent });
       router.replace('/login');
       return;
     }
 
     const uid = sess.user.id;
+    console.log('[stepsDbg] loadData:session-ok setUserId', { silent: !!opts?.silent });
     setUserId(uid);
     setSession({ access_token: sess.access_token });
 
@@ -393,7 +387,7 @@ export default function HomeScreen() {
       ] = await Promise.all([
         supabase
           .from('daily_logs')
-          .select('client_id, coach_id, created_at, id, log_date, questions, steps, weight')
+          .select('client_id, coach_id, created_at, id, log_date, questions, steps, weight, weight_photo_key')
           .eq('client_id', uid)
           .order('log_date', { ascending: false })
           .limit(30),
@@ -475,6 +469,7 @@ export default function HomeScreen() {
         if (!dirtyFieldsRef.current.weight) {
           setWeight(todayRow.weight !== null ? todayRow.weight.toFixed(1) : '');
         }
+        setExistingWeightPhotoKey(todayRow.weight_photo_key ?? null);
         if (!dirtyFieldsRef.current.questions) {
           setQuestions(todayRow.questions ?? '');
         }
@@ -560,14 +555,16 @@ export default function HomeScreen() {
   // whatever it read the very first time, for the entire app session, with
   // no way to force a fresh read. `manual` marks a user-triggered refresh
   // (drives the small refresh button's spinner and its "unavailable" hint).
-  // Tier 1: Health Connect (preferred when available — Android 14+ ships
-  // it in the OS, and its aggregate() query can include on-device steps
-  // automatically). Tier 2: the Pedometer sensor, which works on every
-  // phone including Android <14 without the Health Connect companion app
-  // installed — kept as a fallback, not replaced, specifically because
-  // this app's real tester device (Android 13) needs it. Returns null
-  // when this source has nothing usable, so the caller can try the next
-  // tier without needing to know which source it just tried.
+  // Steps come from Health Connect only (Android 14+ ships it in the OS,
+  // and its aggregate() query can include on-device steps automatically).
+  // The old Pedometer fallback tier was removed 2026-10-09: expo-sensors'
+  // Pedometer.getStepCountAsync(start,end) is iOS-only and always threw
+  // "Getting step count for date range is not supported on Android yet"
+  // (BUG-015), so it never produced a single step on any Android device.
+  // When Health Connect has nothing usable the UI falls through to the
+  // OCR/manual step entry below. Returns null when this source has
+  // nothing usable, plus the source's own status string so a diagnostic
+  // log can show WHY it came back empty, not just that it did.
   // Returns the read-source's own status string alongside the value —
   // not just number|null — so a diagnostic log can show WHY a tier came
   // back empty (unavailable/permission_denied/no_data/error), not just
@@ -586,24 +583,29 @@ export default function HomeScreen() {
     return { steps: result.status === 'ok' ? result.steps : null, status: result.status };
   };
 
-  const tryPedometerSteps = async (): Promise<StepsAttempt> => {
-    const available = await isPedometerAvailable();
-    if (!available) return { steps: null, status: 'unavailable' };
-    let granted = await hasStepsPermission();
-    if (!granted) granted = await requestStepsPermission();
-    if (!granted) return { steps: null, status: 'permission_denied' };
-    const result = await readTodaySteps();
-    return { steps: result.status === 'ok' ? result.steps : null, status: result.status };
-  };
-
   const syncSteps = useCallback(
     async (manual = false) => {
-      if (!userId) return;
+      // [stepsDbg] TEMPORARY cold-start diagnostics — correlation tag `t`,
+      // booleans only (never the userId). Remove after root-cause confirmed.
+      const t = Date.now() % 100000;
+      console.log('[stepsDbg] syncSteps:enter', {
+        t,
+        manual,
+        hasUser: !!userId,
+        inFlight: stepsSyncInFlightRef.current,
+      });
+      if (!userId) {
+        console.log('[stepsDbg] syncSteps:skip', { t, reason: 'no-user' });
+        return;
+      }
       // Covers both trigger paths (tab-focus auto-sync and the manual
       // button) — without this, a manual tap while an automatic sync is
       // still in flight could run two overlapping syncs that both write
       // to the server.
-      if (stepsSyncInFlightRef.current) return;
+      if (stepsSyncInFlightRef.current) {
+        console.log('[stepsDbg] syncSteps:skip', { t, reason: 'in-flight' });
+        return;
+      }
       stepsSyncInFlightRef.current = true;
       if (manual) {
         setStepsSyncError(false);
@@ -616,19 +618,14 @@ export default function HomeScreen() {
         // automatic sync from any source overwrite that, regardless of
         // which tier would otherwise succeed.
         if (overrideActive) {
+          console.log('[stepsDbg] syncSteps:skip', { t, reason: 'override' });
           if (manual) setStepsSyncUnavailable(false);
           return;
         }
 
         const hcAttempt = await tryHealthConnectSteps();
-        let steps = hcAttempt.steps;
-        let source: 'health_connect' | 'pedometer' | null = steps !== null ? 'health_connect' : null;
-        let pedometerAttempt: StepsAttempt | null = null;
-        if (steps === null) {
-          pedometerAttempt = await tryPedometerSteps();
-          steps = pedometerAttempt.steps;
-          if (steps !== null) source = 'pedometer';
-        }
+        const steps = hcAttempt.steps;
+        const source: 'health_connect' | null = steps !== null ? 'health_connect' : null;
 
         // Unconditional, not __DEV__-gated — __DEV__ is false in this
         // preview/production build, so a gated log would never surface
@@ -637,118 +634,122 @@ export default function HomeScreen() {
         console.log('[stepsForegroundSync]', {
           today,
           healthConnect: hcAttempt.status,
-          pedometer: pedometerAttempt?.status ?? 'skipped',
           steps,
           source,
           manual,
         });
-        setSyncDebugInfo(
-          `steps: hc=${hcAttempt.status} ped=${pedometerAttempt?.status ?? 'skipped'} steps=${steps} src=${source ?? 'none'} manual=${manual}`
-        );
 
         if (steps === null) {
-          // Neither tier had anything usable — this is what should
-          // surface the OCR fallback button, not a single tier's own
-          // unavailability.
-          if (manual) setStepsSyncUnavailable(true);
+          // Health Connect had nothing usable. Distinguish a device that
+          // CANNOT natively collect its own steps (API<34 / SDK ext<20 / no
+          // step sensor — see lib/stepsCapability.ts) from a transient "no
+          // data yet" on a capable device, so the fallback copy is honest.
+          // No value is written here, so a no_data device never records a
+          // false zero.
+          const support = getStepCollectionSupport();
+          const reason =
+            hcAttempt.status === 'permission_denied'
+              ? 'permission_denied'
+              : !support.supported
+                ? 'unsupported'
+                : hcAttempt.status === 'error'
+                  ? 'error'
+                  : 'no_data';
+          setStepsReason(reason);
+          console.log('[stepsForegroundSync] no-value', {
+            hc: hcAttempt.status,
+            reason,
+            cap: support.supported ? 'supported' : support.reason,
+            manual,
+          });
+          // A definitively unsupported device, a denied permission, or a hard
+          // "unavailable" will never succeed automatically, so surface the
+          // photo/manual fallback right away. A transient no_data stays gated
+          // on a manual pull so a capable device isn't nagged prematurely.
+          if (
+            reason === 'unsupported' ||
+            reason === 'permission_denied' ||
+            hcAttempt.status === 'unavailable' ||
+            manual
+          ) {
+            setStepsSyncUnavailable(true);
+          }
           return;
         }
-        if (manual) setStepsSyncUnavailable(false);
+        setStepsReason(null);
+        setStepsSyncUnavailable(false);
+        setStepsSyncError(false);
         setStepsSource(source);
 
-        if (!dirtyFieldsRef.current.steps) {
-          setSteps(String(steps));
-          setSubmitSuccess(false);
-          const supabase = createMobileSupabaseClient();
-          const { error } = await supabase.rpc('update_today_log', { p_steps: steps });
-          if (error) {
-            if (manual) setStepsSyncError(true);
-            console.log('[stepsForegroundSync] update_today_log failed', error);
-          }
+        // Health Connect takes precedence over an OCR-derived value for the
+        // same day: overwrite any pending OCR count and clear its fallback
+        // UI. OCR only runs when HC was unavailable, so this never clobbers a
+        // newer HC read with OCR — only the reverse.
+        dirtyFieldsRef.current.steps = false;
+        setStepsOcrState(initialStepsOcrState);
+        setSteps(String(steps));
+        setSubmitSuccess(false);
+        const supabase = createMobileSupabaseClient();
+        const { error } = await supabase.rpc('update_today_log', { p_steps: steps });
+        if (error) {
+          if (manual) setStepsSyncError(true);
+          console.log('[stepsForegroundSync] update_today_log failed', error);
         }
 
         await registerStepsBackgroundTask();
       } catch (err) {
         if (manual) setStepsSyncError(true);
         console.log('[stepsForegroundSync] unexpected error', err);
-        setSyncDebugInfo(`steps: unexpected error: ${err instanceof Error ? err.message : String(err)}`);
         // Never let steps auto-sync crash or block the Daily Log.
       } finally {
+        console.log('[stepsDbg] syncSteps:exit', { t });
         stepsSyncInFlightRef.current = false;
       }
     },
     [userId]
   );
 
-  // Weight via Health Connect — a genuinely new capability, so there is no
-  // existing tier to preserve and no manual-override table to consult.
-  // Mirrors syncSteps' "never overwrite the user's own value" rule via the
-  // simpler guard already used elsewhere on this screen: skip when the
-  // field is dirty (mid-edit) or already has a value (OCR or a prior
-  // manual entry today) — Health Connect only ever fills an EMPTY field.
-  const tryHealthConnectWeight = async (): Promise<{ weightKg: number | null; status: string }> => {
-    const available = await isHealthConnectAvailableForWeight();
-    if (!available) return { weightKg: null, status: 'unavailable' };
-    let granted = await hasHealthConnectWeightPermission();
-    if (!granted) granted = await requestHealthConnectWeightPermission();
-    if (!granted) return { weightKg: null, status: 'permission_denied' };
-    const result = await readHealthConnectWeight();
-    return { weightKg: result.status === 'ok' ? result.weightKg : null, status: result.status };
-  };
+  // Weight has NO Health Connect auto-fill, by design. The coaching
+  // anti-cheat model requires a SCALE PHOTO as proof for every weight
+  // reading, and a Health Connect value arrives with no photo — so it
+  // would bypass the evidence requirement (and is almost always empty
+  // anyway without a smart scale). Weight comes only from the photo-OCR
+  // flow or, after WEIGHT_PHOTO_MAX_ATTEMPTS failed photos, manual entry
+  // with the photo still attached. Steps auto-sync (Health Connect) is
+  // unaffected — it has no such proof requirement.
 
-  const syncWeight = useCallback(async () => {
-    if (!userId) return;
-    if (weightSyncInFlightRef.current) return;
-    if (dirtyFieldsRef.current.weight || weightRef.current.trim() !== '') return;
-    weightSyncInFlightRef.current = true;
-    try {
-      const attempt = await tryHealthConnectWeight();
-      const weightKg = attempt.weightKg;
-      // Unconditional, not __DEV__-gated — see stepsForegroundSync's log
-      // just above for why a gated log never surfaces in a preview build.
-      console.log('[weightForegroundSync]', { healthConnect: attempt.status, weightKg });
-      setSyncDebugInfo(`weight: hc=${attempt.status} kg=${weightKg ?? 'null'}`);
-      if (weightKg === null) return;
-      // Re-check right before writing — an OCR read or manual keystroke
-      // could have landed while the Health Connect call was in flight.
-      if (dirtyFieldsRef.current.weight || weightRef.current.trim() !== '') return;
-
-      setWeightSource('health_connect');
-      setWeight(String(weightKg));
-      setSubmitSuccess(false);
-      const supabase = createMobileSupabaseClient();
-      const { error } = await supabase.rpc('update_today_log', { p_weight: weightKg });
-      if (error) {
-        console.log('[weightForegroundSync] update_today_log failed', error);
-      }
-    } catch (err) {
-      console.log('[weightForegroundSync] unexpected error', err);
-      setSyncDebugInfo(`weight: unexpected error: ${err instanceof Error ? err.message : String(err)}`);
-      // Never let weight auto-sync crash or block the Daily Log.
-    } finally {
-      weightSyncInFlightRef.current = false;
-    }
-  }, [userId]);
-
-  // Pull-to-refresh is the only sync/refresh trigger on this screen (no
-  // dedicated button) — besides reloading server data, it re-runs the
-  // device-side steps/weight sync tiers (Health Connect / Pedometer), the
-  // same calls that already run automatically on tab focus. Runs them
-  // alongside loadData rather than sequenced after it, matching how the
-  // useFocusEffect below already runs them concurrently on every tab focus
-  // without issue.
+  // Pull-to-refresh reloads server data and re-runs the Steps Health
+  // Connect sync. Weight is intentionally NOT synced here (see above).
   const onRefresh = useCallback(async () => {
+    console.log('[stepsDbg] onRefresh:fire');
     setRefreshing(true);
-    await Promise.all([loadData({ silent: true }), syncSteps(true), syncWeight()]);
+    await Promise.all([loadData({ silent: true }), syncSteps(true)]);
     setRefreshing(false);
-  }, [loadData, syncSteps, syncWeight]);
+  }, [loadData, syncSteps]);
+
+  // [stepsDbg] TEMPORARY — home mount/unmount, to see if the tab screen is
+  // preserved across tab switches (no unmount) or torn down. Remove after.
+  useEffect(() => {
+    console.log('[stepsDbg] home:mount');
+    return () => console.log('[stepsDbg] home:unmount');
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
+      console.log('[stepsDbg] focusEffect:fire');
       syncSteps();
-      syncWeight();
-    }, [syncSteps, syncWeight])
+    }, [syncSteps])
   );
+
+  // Cold-start guarantee: on a cold launch the focus-effect above fires on
+  // first focus BEFORE auth has finished loading (userId still null, so
+  // syncSteps returns early at its `if (!userId) return` guard and never logs
+  // a sync). Re-run it once userId is set. syncSteps's in-flight ref makes this
+  // idempotent with the focus-triggered run, so no duplicate request is sent.
+  useEffect(() => {
+    console.log('[stepsDbg] userIdEffect:fire', { hasUser: !!userId });
+    if (userId) syncSteps();
+  }, [userId, syncSteps]);
 
   // Refetch on every tab focus (silent — no full-screen spinner), not just
   // mount. loadData's own Promise.all already covers unread-count and
@@ -777,6 +778,9 @@ export default function HomeScreen() {
   const WEIGHT_OCR_RETRY_DELAY_MS = 400;
 
   const runWeightOcr = async (photoUri: string) => {
+    // Claim this run. A later run (user retook) bumps the id, so a stale
+    // result from this run is discarded instead of clobbering the field.
+    const runId = ++weightOcrRunIdRef.current;
     setWeightPhotoTooSmall(false);
     setWeightOcrBusy(true);
     try {
@@ -797,6 +801,9 @@ export default function HomeScreen() {
           }
 
           if (value !== null) {
+            // Superseded by a newer run (user retook while this was
+            // decoding) — drop this result, don't overwrite their field.
+            if (weightOcrRunIdRef.current !== runId) return;
             setWeightOcrState((s) =>
               reduceWeightOcrState(s, { type: 'OCR_SUCCESS', photoUri, value })
             );
@@ -829,18 +836,28 @@ export default function HomeScreen() {
         `[weight-ocr] no candidate found after ${WEIGHT_OCR_MAX_ATTEMPTS} attempts, last raw OCR text (truncated):`,
         JSON.stringify(lastRawText).slice(0, 200)
       );
-      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+      // Only count this failed photo toward the attempt budget if it's
+      // still the latest run — a superseded run must not advance the
+      // ladder (which could wrongly unlock manual entry early).
+      if (weightOcrRunIdRef.current === runId) {
+        setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+      }
     } finally {
-      setWeightOcrBusy(false);
+      // Clear the busy spinner only if no newer run has taken over.
+      if (weightOcrRunIdRef.current === runId) setWeightOcrBusy(false);
     }
   };
 
   const handleWeightCameraPress = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'PERMISSION_DENIED' }));
+      // Do NOT unlock manual entry — that would let the client log a
+      // weight with no photo. Surface a recovery hint (enable access /
+      // choose from library) and keep the photo requirement in place.
+      setWeightCameraDenied(true);
       return;
     }
+    setWeightCameraDenied(false);
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -860,9 +877,11 @@ export default function HomeScreen() {
   const handleWeightGalleryPress = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'PERMISSION_DENIED' }));
+      // Same as camera denial: never bypass the photo requirement.
+      setWeightCameraDenied(true);
       return;
     }
+    setWeightCameraDenied(false);
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -907,10 +926,10 @@ export default function HomeScreen() {
   };
 
   // OCR fallback for Steps — only ever reachable from the UI when the
-  // primary pedometer path has already failed/is unavailable (see the
-  // conditional render of the "From Photo" trigger below), matching the
-  // fallback-hierarchy requirement: pedometer first, OCR only as a
-  // fallback, never a parallel/competing input path.
+  // primary Health Connect path has already failed/is unavailable (see
+  // the conditional render of the "From Photo" trigger below), matching
+  // the fallback-hierarchy requirement: Health Connect first, OCR only as
+  // a fallback, never a parallel/competing input path.
   const runStepsOcr = async (photoUri: string) => {
     setStepsOcrBusy(true);
     try {
@@ -1038,11 +1057,25 @@ export default function HomeScreen() {
   };
 
   const handleSubmit = async () => {
+    // Duplicate-submit guard: a double-tap (or a tap while the previous
+    // submit's async upload/RPC is still running) must not fire twice.
+    if (submitting) return;
     setSubmitError(null);
     setSubmitSuccess(false);
 
     let parsedSteps: number | null = null;
     let parsedWeight: number | null = null;
+
+    // Evidence policy: a weight value may only be logged with a scale
+    // photo — one captured this session (retained for upload) or already
+    // stored on today's log. Enforced here AND in the RPC (migration 025).
+    const hasWeightPhotoEvidence =
+      !!weightOcrState.retainedPhotoUri || !!existingWeightPhotoKey;
+    const weightErr = weightSubmitError(weight, hasWeightPhotoEvidence);
+    if (weightErr) {
+      setSubmitError(weightErr);
+      return;
+    }
 
     if (steps.trim()) {
       if (steps.includes('.')) {
@@ -1209,7 +1242,12 @@ export default function HomeScreen() {
       const todayISO = getTodayISO();
 
       const args: TodayLogArgs = {};
-      if (parsedSteps !== null) args.p_steps = parsedSteps;
+      // Steps is system-managed: only write it from a submit when the value
+      // was freshly collected THIS session by OCR (dirtyFieldsRef.steps set
+      // in runStepsOcr). A Health Connect count writes itself directly in
+      // syncSteps; a value merely loaded from the server (dirty=false) is
+      // stale and must never be re-sent.
+      if (parsedSteps !== null && dirtyFieldsRef.current.steps) args.p_steps = parsedSteps;
       if (parsedWeight !== null) args.p_weight = parsedWeight;
       if (questions.trim()) args.p_questions = questions.trim();
       if (finalWeightPhotoKey !== null) args.p_weight_photo_key = finalWeightPhotoKey;
@@ -1226,6 +1264,11 @@ export default function HomeScreen() {
         dirtyFieldsRef.current.steps = false;
         dirtyFieldsRef.current.weight = false;
         dirtyFieldsRef.current.questions = false;
+        // The weight photo key now stored on the server row: the one
+        // uploaded this submit, or the one already there (COALESCE keeps
+        // it when p_weight_photo_key is omitted). Tracked so a later edit
+        // of the same day still counts as having evidence.
+        const storedWeightPhotoKey = finalWeightPhotoKey ?? existingWeightPhotoKey;
         setTodayLog((prev) => ({
           ...(prev ?? {
             client_id: userId ?? '',
@@ -1236,11 +1279,14 @@ export default function HomeScreen() {
             questions: null,
             steps: null,
             weight: null,
+            weight_photo_key: null,
           }),
           weight: parsedWeight,
           steps: parsedSteps,
           questions: questions.trim() || null,
+          weight_photo_key: storedWeightPhotoKey,
         }));
+        setExistingWeightPhotoKey(storedWeightPhotoKey);
         if (finalWeightPhotoKey !== null) {
           setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'RESET' }));
         }
@@ -1390,7 +1436,9 @@ export default function HomeScreen() {
       chipBg: T.successBg,
       chipColor: T.success,
       onTap: () => {
-        stepsInputRef.current?.focus();
+        // Steps is a read-only system-managed field — nothing to focus;
+        // just scroll it into view (it lives in the bottom card).
+        scrollViewRef.current?.scrollToEnd({ animated: true });
       },
     },
     {
@@ -1842,32 +1890,21 @@ export default function HomeScreen() {
                 <Text style={styles.formCardTitle}>STEPS &amp; WEIGHT</Text>
               </View>
 
-              {syncDebugInfo && (
-                <View style={{ backgroundColor: '#3a2a00', borderRadius: 8, padding: 8, marginBottom: 8 }}>
-                  <Text style={{ color: '#ffcc66', fontSize: 11, fontFamily: 'monospace' }}>
-                    DEBUG (temp): {syncDebugInfo}
+              <FieldLabel>Steps</FieldLabel>
+              {/* System-managed KPI: steps come only from Health Connect
+                  (auto) or the screenshot/photo OCR fallback — never manual
+                  typing. Read-only display, so a stale or typed value can
+                  never be written. Shows a dash (never a false 0) when no
+                  reliable count has been collected yet. */}
+              <View style={styles.weightRow}>
+                <View
+                  style={[styles.input, styles.weightInput, styles.stepsDisplay, submitSuccess && styles.inputSaved]}
+                  accessibilityLabel={steps ? `Steps: ${steps}` : 'Steps not collected yet'}
+                >
+                  <Text style={steps ? styles.stepsDisplayValue : styles.stepsDisplayMuted}>
+                    {steps || '—'}
                   </Text>
                 </View>
-              )}
-
-              <FieldLabel>Steps</FieldLabel>
-              <View style={styles.weightRow}>
-                <TextInput
-                  ref={stepsInputRef}
-                  style={[styles.input, styles.weightInput, submitSuccess && styles.inputSaved]}
-                  value={steps}
-                  editable={!submitSuccess}
-                  onChangeText={(v) => {
-                    setSteps(v);
-                    dirtyFieldsRef.current.steps = true;
-                    setSubmitSuccess(false);
-                    markManualOverrideToday(getTodayISO());
-                  }}
-                  placeholder="e.g. 8000"
-                  placeholderTextColor={T.muted}
-                  keyboardType="numeric"
-                  returnKeyType="next"
-                />
               </View>
               {steps.length > 0 &&
                 stepsOcrState.suggestedValue !== null &&
@@ -1880,7 +1917,13 @@ export default function HomeScreen() {
 
               {stepsSyncUnavailable && (
                 <Text style={styles.manualFallbackHint}>
-                  Step tracking isn't available on this device — enter steps manually.
+                  {stepsReason === 'unsupported'
+                    ? "This phone can't auto-track steps — add a photo of your step count."
+                    : stepsReason === 'permission_denied'
+                      ? 'Step access is off in Health Connect — grant it, or add a photo of your step count.'
+                      : stepsReason === 'no_data'
+                        ? 'No steps recorded yet today — walk and pull to refresh, or add a photo of your step count.'
+                        : "Couldn't get steps from your phone — pull to refresh, or add a photo of your step count."}
                 </Text>
               )}
               {stepsSyncError && (
@@ -1891,12 +1934,13 @@ export default function HomeScreen() {
                 </View>
               )}
 
-              {/* OCR fallback — only surfaces once the primary pedometer
-                  path has actually failed or is unavailable, per the
-                  fallback hierarchy (pedometer -> OCR -> manual entry).
-                  Never shown as a parallel/competing input alongside a
-                  working pedometer sync. */}
-              {(stepsSyncUnavailable || stepsSyncError) && stepsOcrState.status !== 'manual_fallback' && (
+              {/* OCR fallback — only surfaces once the primary Health
+                  Connect path has actually failed or is unavailable, per the
+                  fallback hierarchy (Health Connect -> OCR). There is no
+                  manual-typing tier, so the photo button stays available even
+                  after repeated OCR misses (manual_fallback) so the user can
+                  retry. Never shown alongside a working Health Connect sync. */}
+              {(stepsSyncUnavailable || stepsSyncError) && (
                 <TouchableOpacity
                   onPress={handleStepsFromPhotoPress}
                   disabled={stepsOcrBusy}
@@ -1925,11 +1969,22 @@ export default function HomeScreen() {
               )}
               {stepsOcrState.status === 'manual_fallback' && (
                 <Text style={styles.manualFallbackHint}>
-                  Couldn't read steps automatically — enter the value above manually.
+                  Couldn't read steps from your photos — try Health Connect again, or add a clearer photo.
                 </Text>
               )}
 
               <FieldLabel>Weight (kg)</FieldLabel>
+              {/* Weight requires a SCALE PHOTO (coaching anti-cheat proof).
+                  Typing stays locked until either a read succeeds
+                  (suggestedValue set, so the user can correct it) or
+                  WEIGHT_PHOTO_MAX_ATTEMPTS photos fail to read
+                  (manual_fallback). Before that the field is read-only and
+                  the camera is the only way forward. */}
+              {(() => {
+                const weightTypingUnlocked =
+                  weightOcrState.status === 'manual_fallback' ||
+                  weightOcrState.suggestedValue !== null;
+                return (
               <View style={styles.weightRow}>
                 <TextInput
                   ref={weightInputRef}
@@ -1938,16 +1993,17 @@ export default function HomeScreen() {
                     styles.weightInput,
                     { marginBottom: 0 },
                     submitSuccess && styles.inputSaved,
+                    !weightTypingUnlocked && styles.inputLocked,
                   ]}
                   value={weight}
-                  editable={!submitSuccess}
+                  editable={!submitSuccess && weightTypingUnlocked}
                   onChangeText={(v) => {
                     setWeight(v);
                     dirtyFieldsRef.current.weight = true;
                     setSubmitSuccess(false);
                     setWeightOcrState((s) => ({ ...s, suggestedValue: null }));
                   }}
-                  placeholder="e.g. 72.5"
+                  placeholder={weightTypingUnlocked ? 'e.g. 72.5' : 'Photo your scale →'}
                   placeholderTextColor={T.muted}
                   keyboardType="decimal-pad"
                   returnKeyType="next"
@@ -1957,7 +2013,7 @@ export default function HomeScreen() {
                   onPress={handleFromPhotoPress}
                   disabled={weightOcrBusy || submitSuccess}
                   accessibilityRole="button"
-                  accessibilityLabel="Log weight from a photo"
+                  accessibilityLabel="Log weight from a scale photo"
                 >
                   {weightOcrBusy ? (
                     <ActivityIndicator size="small" color={T.primary} />
@@ -1966,22 +2022,71 @@ export default function HomeScreen() {
                   )}
                 </TouchableOpacity>
               </View>
+                );
+              })()}
 
               {weight.length > 0 &&
                 weightOcrState.suggestedValue !== null &&
                 weight === String(weightOcrState.suggestedValue) && (
                   <View style={styles.fromPhotoRow}>
                     <Ionicons name="image" size={13} color={T.success} />
-                    <Text style={styles.fromPhotoText}>From photo</Text>
+                    <Text style={styles.fromPhotoText}>Read {weight} from photo — fix it if wrong</Text>
                   </View>
                 )}
 
+              {/* No photo tried yet: make clear a photo is required. */}
+              {weightOcrState.status === 'idle' &&
+                weightOcrState.suggestedValue === null &&
+                !weightCameraDenied &&
+                !weightOcrBusy && (
+                  <Text style={styles.manualFallbackHint}>
+                    A photo of your scale is required to log your weight.
+                  </Text>
+                )}
+
+              {/* Read failed but attempts remain: keep photographing. */}
+              {weightOcrState.status === 'retry' && (
+                <View style={styles.retakeBanner}>
+                  <Text style={styles.retakeBannerText}>
+                    {weightPhotoTooSmall
+                      ? "That photo's too small to read — get closer to the display and retake"
+                      : "Couldn't read the scale"}{' '}
+                    (attempt {weightOcrState.attempt} of {WEIGHT_PHOTO_MAX_ATTEMPTS}).
+                  </Text>
+                  <TouchableOpacity
+                    onPress={handleFromPhotoPress}
+                    disabled={weightOcrBusy}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retake scale photo"
+                  >
+                    <Text style={styles.retakeBannerAction}>Retake</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Attempts exhausted: typing unlocked, photo still kept. */}
               {weightOcrState.status === 'manual_fallback' && (
                 <Text style={styles.manualFallbackHint}>
-                  {weightPhotoTooSmall
-                    ? "That photo's too small to read clearly — enter your weight below."
-                    : 'Photo saved — enter your weight below.'}
+                  {`Couldn't read the scale after ${WEIGHT_PHOTO_MAX_ATTEMPTS} photos — type your weight above. Your photo is still saved as proof.`}
                 </Text>
+              )}
+
+              {/* Camera/library access denied: recovery path, NOT a bypass.
+                  Field stays locked until a photo is attached. */}
+              {weightCameraDenied && weightOcrState.status !== 'manual_fallback' && (
+                <View style={styles.retakeBanner}>
+                  <Text style={styles.retakeBannerText}>
+                    Camera access is off. A scale photo is required — enable camera
+                    or photo access in Settings, then try again.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => Linking.openSettings()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open Settings to enable camera or photo access"
+                  >
+                    <Text style={styles.retakeBannerAction}>Open Settings</Text>
+                  </TouchableOpacity>
+                </View>
               )}
               </View>
 
@@ -2696,6 +2801,20 @@ const styles = StyleSheet.create({
   weightInput: {
     flex: 1,
   },
+  stepsDisplay: {
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  stepsDisplayValue: {
+    fontSize: 15,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.onSurface,
+  },
+  stepsDisplayMuted: {
+    fontSize: 15,
+    fontFamily: fontFamily.bodyRegular,
+    color: T.muted,
+  },
   weightCameraButton: {
     width: 44,
     height: 44,
@@ -2807,6 +2926,10 @@ const styles = StyleSheet.create({
   inputSaved: {
     backgroundColor: T.surfaceLow,
     color: T.onSurfaceVar,
+  },
+  inputLocked: {
+    backgroundColor: T.surfaceLow,
+    color: T.muted,
   },
   photoButton: {
     borderWidth: 1,

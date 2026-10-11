@@ -1,6 +1,7 @@
 import {
   initialWeightOcrState,
   reduceWeightOcrState,
+  WEIGHT_PHOTO_MAX_ATTEMPTS,
 } from '../weightOcrState';
 
 describe('reduceWeightOcrState', () => {
@@ -16,15 +17,34 @@ describe('reduceWeightOcrState', () => {
     expect(next.retainedPhotoUri).toBe('file://photo1.jpg');
   });
 
-  it('attempt 1 failure: falls back to manual entry immediately, photo retained as proof', () => {
+  it('first failure: asks for a retake (not manual yet), photo retained as proof', () => {
     const next = reduceWeightOcrState(initialWeightOcrState, {
       type: 'OCR_FAILURE',
       photoUri: 'file://photo1.jpg',
     });
     expect(next.attempt).toBe(1);
-    expect(next.status).toBe('manual_fallback');
+    expect(next.status).toBe('retry');
     expect(next.retainedPhotoUri).toBe('file://photo1.jpg');
     expect(next.suggestedValue).toBeNull();
+  });
+
+  it('stays in retry for every failure before the attempt budget is spent', () => {
+    let state = initialWeightOcrState;
+    for (let i = 1; i < WEIGHT_PHOTO_MAX_ATTEMPTS; i++) {
+      state = reduceWeightOcrState(state, { type: 'OCR_FAILURE', photoUri: `p${i}` });
+      expect(state.status).toBe('retry');
+      expect(state.attempt).toBe(i);
+    }
+  });
+
+  it('unlocks manual entry only on the Nth failed photo, keeping the latest photo', () => {
+    let state = initialWeightOcrState;
+    for (let i = 1; i <= WEIGHT_PHOTO_MAX_ATTEMPTS; i++) {
+      state = reduceWeightOcrState(state, { type: 'OCR_FAILURE', photoUri: `p${i}` });
+    }
+    expect(state.attempt).toBe(WEIGHT_PHOTO_MAX_ATTEMPTS);
+    expect(state.status).toBe('manual_fallback');
+    expect(state.retainedPhotoUri).toBe(`p${WEIGHT_PHOTO_MAX_ATTEMPTS}`);
   });
 
   it('success after a prior failure: suggests the value again', () => {
@@ -43,15 +63,6 @@ describe('reduceWeightOcrState', () => {
     expect(next.retainedPhotoUri).toBe('file://photo2.jpg');
   });
 
-  it('repeated failures stay in manual_fallback, always retaining the latest photo', () => {
-    let state = initialWeightOcrState;
-    state = reduceWeightOcrState(state, { type: 'OCR_FAILURE', photoUri: 'a' });
-    state = reduceWeightOcrState(state, { type: 'OCR_FAILURE', photoUri: 'b' });
-    state = reduceWeightOcrState(state, { type: 'OCR_FAILURE', photoUri: 'c' });
-    expect(state.status).toBe('manual_fallback');
-    expect(state.retainedPhotoUri).toBe('c');
-  });
-
   it('permission denied: goes straight to manual entry with no photo', () => {
     const next = reduceWeightOcrState(initialWeightOcrState, {
       type: 'PERMISSION_DENIED',
@@ -68,17 +79,6 @@ describe('reduceWeightOcrState', () => {
     });
     expect(reduceWeightOcrState(dirty, { type: 'RESET' })).toEqual(
       initialWeightOcrState
-    );
-  });
-
-  it('the state shape has no "locked" concept — the weight input stays editable by construction', () => {
-    const next = reduceWeightOcrState(initialWeightOcrState, {
-      type: 'OCR_SUCCESS',
-      photoUri: 'file://photo1.jpg',
-      value: 82.4,
-    });
-    expect(Object.keys(next).sort()).toEqual(
-      ['attempt', 'retainedPhotoUri', 'status', 'suggestedValue'].sort()
     );
   });
 });

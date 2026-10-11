@@ -52,12 +52,15 @@ describe('extractWeightCandidate', () => {
     expect(extractWeightCandidate(result)).toBe(75.2);
   });
 
-  it('prefers the visually larger candidate when neither is near a kg label', () => {
+  it('rejects bare in-range integers with no kg label and no decimal (ambiguous)', () => {
+    // Policy: being in 30-300 is not enough. Two bare integers with no
+    // unit could be anything (step goal, age, a UI number) — refuse to
+    // guess so the caller asks for another photo instead of logging junk.
     const result = resultFromLines([
       { text: '45', frame: FRAME_SMALL },
       { text: '120', frame: FRAME_LARGE },
     ]);
-    expect(extractWeightCandidate(result)).toBe(120);
+    expect(extractWeightCandidate(result)).toBeNull();
   });
 
   it('rejects a value below the valid range', () => {
@@ -144,5 +147,50 @@ describe('extractWeightCandidate', () => {
       { text: '165 kg', frame: FRAME_LARGE },
     ]);
     expect(extractWeightCandidate(result)).toBe(165);
+  });
+
+  // ── Phase 4 regression fixtures (real scale readings from the client) ──
+
+  it('reads a clear 76.40 kg seven-segment reading', () => {
+    expect(extractWeightCandidate(resultFromLines([{ text: '76.40 kg' }]))).toBe(76.4);
+  });
+
+  it('preserves two decimal places (79.75, not 79.7)', () => {
+    expect(extractWeightCandidate(resultFromLines([{ text: '79.75 kg' }]))).toBe(79.75);
+  });
+
+  it('accepts a comma decimal separator', () => {
+    expect(extractWeightCandidate(resultFromLines([{ text: '74,60 kg' }]))).toBe(74.6);
+  });
+
+  it('screenshot: picks 76.40 and ignores a 55% battery readout', () => {
+    const result = resultFromLines([
+      { text: '23:45 55%', frame: FRAME_SMALL },
+      { text: '76.40 kg', frame: FRAME_LARGE },
+    ]);
+    expect(extractWeightCandidate(result)).toBe(76.4);
+  });
+
+  it('screenshot with the scale reading undetected: rejects the 55% battery number', () => {
+    // When the low-contrast seven-segment display fails to OCR, only UI
+    // chrome remains. 55 is in range but must NOT be logged as a weight.
+    const result = resultFromLines([{ text: '23:45 55%  R', frame: FRAME_SMALL }]);
+    expect(extractWeightCandidate(result)).toBeNull();
+  });
+
+  it('picks the larger decimal when multiple decimal candidates compete', () => {
+    const result = resultFromLines([
+      { text: '66.6', frame: FRAME_SMALL },
+      { text: '82.2', frame: FRAME_LARGE },
+    ]);
+    expect(extractWeightCandidate(result)).toBe(82.2);
+  });
+
+  it('prefers a kg-labeled integer over a competing bare decimal', () => {
+    const result = resultFromLines([
+      { text: '95.5', frame: FRAME_SMALL },
+      { text: '80 kg', frame: FRAME_SMALL },
+    ]);
+    expect(extractWeightCandidate(result)).toBe(80);
   });
 });

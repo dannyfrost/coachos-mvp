@@ -1,0 +1,6 @@
+# Weight-OCR dataset holds client scale photos = personal data.
+# NEVER commit image bytes or a manifest that embeds them.
+# Only this .gitignore is tracked; the dataset is built locally via
+# tools/weight-ocr-dataset/ingest.py and stored out of version control.
+*
+!.gitignore

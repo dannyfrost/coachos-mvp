@@ -7,7 +7,7 @@ import {
   aggregateRecord,
   SdkAvailabilityStatus,
 } from 'react-native-health-connect';
-import { withTimeout } from './stepsPedometer';
+import { withTimeout } from './withTimeout';
 
 /**
  * Thin, isolated wrapper around react-native-health-connect. Re-added

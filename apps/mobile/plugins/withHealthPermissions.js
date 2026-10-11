@@ -34,6 +34,43 @@ const withHealthPermissions = (config) => {
       }
     }
 
+    // Android 14+ (API 34): Health Connect is built into the OS and REQUIRES an
+    // activity that handles VIEW_PERMISSION_USAGE with category HEALTH_PERMISSIONS.
+    // Without it every HC read/write throws
+    //   IllegalStateException: Incorrect health permission state
+    // (caught in readTodaySteps/readTodayWeight -> status 'error'), so the steps
+    // and weight KPIs never sync on Android 14/15 devices even after the grant.
+    // react-native-health-connect's own plugin only adds the Android-13
+    // ACTION_SHOW_PERMISSIONS_RATIONALE intent, not this alias, so declare it here.
+    const application = manifest.application && manifest.application[0];
+    if (application) {
+      application['activity-alias'] = application['activity-alias'] || [];
+      const aliasName = 'ViewPermissionUsageActivity';
+      const hasAlias = application['activity-alias'].some(
+        (a) => a.$ && a.$['android:name'] === aliasName
+      );
+      if (!hasAlias) {
+        application['activity-alias'].push({
+          $: {
+            'android:name': aliasName,
+            'android:exported': 'true',
+            'android:targetActivity': '.MainActivity',
+            'android:permission': 'android.permission.START_VIEW_PERMISSION_USAGE',
+          },
+          'intent-filter': [
+            {
+              action: [
+                { $: { 'android:name': 'android.intent.action.VIEW_PERMISSION_USAGE' } },
+              ],
+              category: [
+                { $: { 'android:name': 'android.intent.category.HEALTH_PERMISSIONS' } },
+              ],
+            },
+          ],
+        });
+      }
+    }
+
     return config;
   });
 };

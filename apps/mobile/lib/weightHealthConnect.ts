@@ -6,7 +6,7 @@ import {
   readRecords,
   SdkAvailabilityStatus,
 } from 'react-native-health-connect';
-import { withTimeout } from './stepsPedometer';
+import { withTimeout } from './withTimeout';
 
 /**
  * Weight via Health Connect — a genuinely new capability (there was no

@@ -1,4 +1,4 @@
-import { withTimeout, PedometerTimeoutError } from '../stepsPedometer';
+import { withTimeout, NativeCallTimeoutError } from '../withTimeout';
 
 describe('withTimeout', () => {
   beforeEach(() => {
@@ -19,11 +19,11 @@ describe('withTimeout', () => {
     await expect(promise).rejects.toThrow('native failure');
   });
 
-  it('rejects with PedometerTimeoutError when the wrapped promise never settles', async () => {
+  it('rejects with NativeCallTimeoutError when the wrapped promise never settles', async () => {
     const neverSettles = new Promise<string>(() => {});
     const promise = withTimeout(neverSettles, 5000, 'hung-call');
 
-    const assertion = expect(promise).rejects.toThrow(PedometerTimeoutError);
+    const assertion = expect(promise).rejects.toThrow(NativeCallTimeoutError);
     jest.advanceTimersByTime(5000);
     await assertion;
   });

@@ -1,11 +1,18 @@
-import type { StepsReadResult } from './stepsPedometer';
-
 /**
  * Pure synchronization decision — no native calls, no storage, no
  * network. Used by both foreground sync (on Daily Log load) and the
  * background task, so the two paths can never disagree about what
  * "should I update the Steps field" means.
  */
+
+// The shape every steps source returns. Health Connect's own
+// HealthConnectReadResult is structurally identical and assignable here.
+export type StepsReadResult =
+  | { status: 'ok'; steps: number }
+  | { status: 'no_data' }
+  | { status: 'denied' }
+  | { status: 'unavailable' }
+  | { status: 'error' };
 
 export type StepsSyncDecision = { action: 'update'; value: number } | { action: 'skip' };
 

@@ -1,17 +1,24 @@
 /**
  * Pure state machine for the weight-OCR capture flow. No camera or
  * native OCR calls here — this only tracks attempt count and which
- * photo (if any) should be uploaded at save time. Manual entry is
- * never gated behind a failed OCR attempt: a single OCR_FAILURE goes
- * straight to 'manual_fallback' (no retry-then-fallback ladder) since
- * real-world scale photos (seven-segment LCD, off-axis angle) make
- * repeated auto-retries a false promise, not a real recovery path. The
- * Weight text input itself is a normal controlled field owned by the
- * screen, independent of this state — there is no "locked" status here
- * by design, since it must always stay editable.
+ * photo (if any) should be uploaded at save time.
+ *
+ * Coaching anti-cheat model: the SCALE PHOTO is the proof that matters,
+ * not the typed number. So a photo is the required primary input, OCR
+ * reads it, and a failed read asks the user to RETAKE — it does NOT drop
+ * straight to manual typing. Only after WEIGHT_PHOTO_MAX_ATTEMPTS failed
+ * photos does typing unlock as a last resort, and even then the last
+ * photo is still retained and uploaded as proof alongside the typed
+ * value. 'retry' = keep photographing; 'manual_fallback' = typing now
+ * allowed. The Weight text input is kept locked by the screen until this
+ * reaches 'manual_fallback' OR a read succeeds (suggestedValue set).
  */
 
-export type WeightOcrStatus = 'idle' | 'manual_fallback';
+// How many failed scale photos before typing is allowed as a last
+// resort. ponytail: tune here if coaches want more/fewer retake prompts.
+export const WEIGHT_PHOTO_MAX_ATTEMPTS = 3;
+
+export type WeightOcrStatus = 'idle' | 'retry' | 'manual_fallback';
 
 export type WeightOcrState = {
   attempt: number;
@@ -50,21 +57,26 @@ export function reduceWeightOcrState(
         suggestedValue: event.value,
       };
 
-    case 'OCR_FAILURE':
-      // Any failure, first attempt included: straight to manual entry.
-      // The photo is retained and will upload alongside whatever the
-      // user types — still useful as proof even though OCR couldn't
-      // read it. Retaking is always available via the camera button,
-      // it's just never forced before the user can type a value.
+    case 'OCR_FAILURE': {
+      // Keep asking for another scale photo until the attempt budget is
+      // spent — the photo is the proof, so retaking beats letting the
+      // user type an unverifiable number. Only the Nth failure unlocks
+      // manual entry. Latest photo is always retained as proof either
+      // way (it uploads even when OCR couldn't read it).
+      const attempt = state.attempt + 1;
+      const status: WeightOcrStatus =
+        attempt >= WEIGHT_PHOTO_MAX_ATTEMPTS ? 'manual_fallback' : 'retry';
       return {
-        attempt: state.attempt + 1,
-        status: 'manual_fallback',
+        attempt,
+        status,
         retainedPhotoUri: event.photoUri,
         suggestedValue: null,
       };
+    }
 
     case 'PERMISSION_DENIED':
-      // Never a dead end: go straight to manual entry, no photo.
+      // Camera unusable (user denied it) — there is no way to collect a
+      // photo, so typing must be allowed immediately. No photo to retain.
       return {
         ...state,
         status: 'manual_fallback',

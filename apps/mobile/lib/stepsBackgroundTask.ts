@@ -1,7 +1,7 @@
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundTask from 'expo-background-task';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
-import { readTodaySteps } from './stepsPedometer';
+import { readTodaySteps } from './stepsHealthConnect';
 import { decideStepsSync } from './stepsSync';
 import { isManualOverrideActiveToday } from './stepsManualOverride';
 import { getTodayISO } from './stats';
