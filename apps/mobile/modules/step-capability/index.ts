@@ -24,12 +24,22 @@ export type StepCapability = {
 
 // Resolved lazily (not at import time) so merely importing this file can never
 // crash on a platform/build without the native module.
-type StepCapabilityNativeModule = { getStepCapability(): StepCapability };
+type StepCapabilityNativeModule = {
+  getStepCapability(): StepCapability;
+  /** Cumulative hardware step count since last reboot, or null if no sensor /
+   *  no event within the native timeout. All per-day math is done in JS. */
+  readStepCounter(): Promise<number | null>;
+};
 let nativeModule: StepCapabilityNativeModule | null = null;
 
+function mod(): StepCapabilityNativeModule {
+  return (nativeModule ??= requireNativeModule<StepCapabilityNativeModule>('StepCapability'));
+}
+
 export function getStepCapability(): StepCapability {
-  const mod =
-    nativeModule ??
-    (nativeModule = requireNativeModule<StepCapabilityNativeModule>('StepCapability'));
-  return mod.getStepCapability();
+  return mod().getStepCapability();
+}
+
+export function readStepCounter(): Promise<number | null> {
+  return mod().readStepCounter();
 }

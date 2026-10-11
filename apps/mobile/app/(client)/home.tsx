@@ -80,6 +80,7 @@ import {
 } from '../../lib/stepsHealthConnect';
 import { decideStepsSync } from '../../lib/stepsSync';
 import { getStepCollectionSupport } from '../../lib/stepsCapability';
+import { readTodaySteps as readDeviceCounterSteps } from '../../lib/stepsNativeCounter';
 import { isManualOverrideActiveToday } from '../../lib/stepsManualOverride';
 import { registerStepsBackgroundTask } from '../../lib/stepsBackgroundTask';
 import {
@@ -232,7 +233,9 @@ export default function HomeScreen() {
   // Which tier actually produced the current value — client-side only,
   // never persisted (no DB/RPC change). Lets a later, lower-trust tier
   // know not to clobber a value a higher-trust tier already set.
-  const [stepsSource, setStepsSource] = useState<'health_connect' | 'ocr' | null>(null);
+  const [stepsSource, setStepsSource] = useState<
+    'health_connect' | 'device_counter' | 'ocr' | null
+  >(null);
   const [weightSource, setWeightSource] = useState<'health_connect' | 'ocr' | null>(null);
   // True only for the most recent weight-OCR attempt that was skipped
   // (never even sent to ML Kit) because the picked photo's pixel
@@ -555,14 +558,16 @@ export default function HomeScreen() {
   // whatever it read the very first time, for the entire app session, with
   // no way to force a fresh read. `manual` marks a user-triggered refresh
   // (drives the small refresh button's spinner and its "unavailable" hint).
-  // Steps come from Health Connect only (Android 14+ ships it in the OS,
-  // and its aggregate() query can include on-device steps automatically).
-  // The old Pedometer fallback tier was removed 2026-10-09: expo-sensors'
-  // Pedometer.getStepCountAsync(start,end) is iOS-only and always threw
-  // "Getting step count for date range is not supported on Android yet"
-  // (BUG-015), so it never produced a single step on any Android device.
-  // When Health Connect has nothing usable the UI falls through to the
-  // OCR/manual step entry below. Returns null when this source has
+  // Primary source is Health Connect (Android 14+ ships it in the OS, and its
+  // aggregate() query can include on-device steps automatically). On Android
+  // < 14, where HC does no native counting, we fall back to the hardware
+  // TYPE_STEP_COUNTER sensor read directly in lib/stepsNativeCounter.ts (the
+  // fallback attempt lives in syncSteps below, not here). The old expo-sensors
+  // Pedometer tier was NOT reinstated: Pedometer.getStepCountAsync(start,end)
+  // is iOS-only and always threw "Getting step count for date range is not
+  // supported on Android yet" (BUG-015), so it never produced a step on
+  // Android. When no source has anything usable the UI falls through to the
+  // OCR/photo step entry below. Returns null when this source has
   // nothing usable, plus the source's own status string so a diagnostic
   // log can show WHY it came back empty, not just that it did.
   // Returns the read-source's own status string alongside the value —
@@ -624,8 +629,27 @@ export default function HomeScreen() {
         }
 
         const hcAttempt = await tryHealthConnectSteps();
-        const steps = hcAttempt.steps;
-        const source: 'health_connect' | null = steps !== null ? 'health_connect' : null;
+        let steps = hcAttempt.steps;
+        let source: 'health_connect' | 'device_counter' | null =
+          steps !== null ? 'health_connect' : null;
+
+        // Android < 14 can't natively count for Health Connect, but if the
+        // device has a hardware step counter we read it directly (see
+        // lib/stepsNativeCounter.ts). Only attempt when HC yielded nothing AND
+        // the device is HC-unsupported but has the sensor — on an HC-capable
+        // device a null read is a genuine no_data, not a reason to double-count.
+        let counterStatus: string | null = null;
+        if (steps === null) {
+          const support0 = getStepCollectionSupport();
+          if (!support0.supported && support0.capability?.hasStepCounterSensor) {
+            const counter = await readDeviceCounterSteps(today);
+            counterStatus = counter.status;
+            if (counter.status === 'ok') {
+              steps = counter.steps;
+              source = 'device_counter';
+            }
+          }
+        }
 
         // Unconditional, not __DEV__-gated — __DEV__ is false in this
         // preview/production build, so a gated log would never surface
@@ -634,6 +658,7 @@ export default function HomeScreen() {
         console.log('[stepsForegroundSync]', {
           today,
           healthConnect: hcAttempt.status,
+          deviceCounter: counterStatus,
           steps,
           source,
           manual,
