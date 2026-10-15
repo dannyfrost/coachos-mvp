@@ -104,6 +104,10 @@ export async function POST(req: NextRequest) {
     const message = await anthropic.messages.create({
       model: OCR_MODEL,
       max_tokens: 64,
+      // Reading a number off a display needs no reasoning. Haiku 5.5 thinks by
+      // default; left on, the 64-token budget is spent on thinking and no
+      // answer text is emitted. Disabled is accepted at effort <= high.
+      thinking: { type: 'disabled' },
       messages: [
         {
           role: 'user',
