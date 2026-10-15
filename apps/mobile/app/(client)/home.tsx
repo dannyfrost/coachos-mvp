@@ -68,8 +68,6 @@ import {
   getTodayISO,
   getYesterdayISO,
 } from '../../lib/stats';
-import { extractWeightCandidate } from '../../lib/weightOcr';
-import { preprocessWeightPhoto } from '../../lib/weightImagePreprocess';
 import { extractStepsCandidate } from '../../lib/stepsOcr';
 import { initialStepsOcrState, reduceStepsOcrState } from '../../lib/stepsOcrState';
 import {
@@ -220,6 +218,9 @@ export default function HomeScreen() {
   // an entry logged earlier). Counts as existing evidence so re-saving
   // the same day's weight doesn't demand a fresh photo.
   const [existingWeightPhotoKey, setExistingWeightPhotoKey] = useState<string | null>(null);
+  // Photo uploaded at capture time so the server can read it (see runWeightOcr).
+  // Reused at save so the photo is not uploaded a second time.
+  const [uploadedWeightKey, setUploadedWeightKey] = useState<string | null>(null);
   const [stepsSyncUnavailable, setStepsSyncUnavailable] = useState(false);
   const [stepsSyncError, setStepsSyncError] = useState(false);
   // Why no Health Connect value is available — drives honest fallback copy so
@@ -790,82 +791,122 @@ export default function HomeScreen() {
 
   // Real phone photos run several thousand px on a side; a picked asset
   // below this on either dimension is a thumbnail/screenshot crop, not a
-  // usable photo — reject it before wasting an ML Kit call.
+  // usable photo — reject it before uploading it for OCR.
   const MIN_OCR_DIMENSION = 500;
 
-  // A failed read (thrown error or no candidate found) can be transient —
-  // e.g. the native ML Kit call glitching — rather than the photo genuinely
-  // being unreadable, so the same picture gets up to 3 attempts, with a
-  // short gap between them, before giving up. Stays silent to the user
-  // throughout (single spinner for the whole loop, no per-attempt UI) —
-  // only the final outcome (success or the existing retake banner) shows.
-  const WEIGHT_OCR_MAX_ATTEMPTS = 3;
-  const WEIGHT_OCR_RETRY_DELAY_MS = 400;
+  // Upload a weight photo to tenant-media and return its stored key. Pulled
+  // out of handleSubmit so capture-time OCR and save both go through one path.
+  // Caller guarantees coachId/userId/session are set.
+  const uploadWeightPhoto = async (uri: string): Promise<string> => {
+    const ext = uri.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+    const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+    const imageBlob = await fetch(uri).then((r) => r.blob());
+    const filename = `${Date.now()}_weight.${ext}`;
+    const path = `${coachId}/${userId}/${filename}`;
 
+    const urlRes = await fetch(`${API_BASE}/api/storage/signed-upload-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session!.access_token}`,
+      },
+      body: JSON.stringify({ path, content_type: contentType, size: imageBlob.size }),
+    });
+    if (!urlRes.ok) throw new Error(`signed-upload-url ${urlRes.status}`);
+    const { signed_url, path: confirmedPath } = (await urlRes.json()) as {
+      signed_url: string;
+      path: string;
+    };
+
+    const putRes = await fetch(signed_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: imageBlob,
+    });
+    if (!putRes.ok) throw new Error(`photo PUT ${putRes.status}`);
+    return confirmedPath;
+  };
+
+  // Seven-segment scale displays defeat on-device ML Kit (it drops the "7"),
+  // so the read now happens server-side: upload the photo, then ask the
+  // platform to read it (POST /api/weight/ocr) and return the kg number. The
+  // uploaded key is kept so save does not re-upload the same photo. A failed
+  // read still retains the photo as proof and advances the retake ladder.
   const runWeightOcr = async (photoUri: string) => {
     // Claim this run. A later run (user retook) bumps the id, so a stale
     // result from this run is discarded instead of clobbering the field.
     const runId = ++weightOcrRunIdRef.current;
     setWeightPhotoTooSmall(false);
     setWeightOcrBusy(true);
-    try {
-      // Seven-segment scale displays are unreadable to ML Kit as-shot (see
-      // lib/weightImagePreprocess.ts). Preprocess once to high-contrast
-      // white-on-black; each retry attempt OCRs the processed image first
-      // and falls back to the raw photo if the processed one yields no
-      // candidate. The ORIGINAL photoUri is what we retain/upload either way.
-      const processedUri = await preprocessWeightPhoto(photoUri);
-      let lastRawText: string | null = null;
-      for (let attempt = 1; attempt <= WEIGHT_OCR_MAX_ATTEMPTS; attempt++) {
-        try {
-          let ocrResult = await recognizeText(processedUri ?? photoUri, 'latin');
-          let value = extractWeightCandidate(ocrResult);
-          if (value === null && processedUri) {
-            ocrResult = await recognizeText(photoUri, 'latin');
-            value = extractWeightCandidate(ocrResult);
-          }
 
-          if (value !== null) {
-            // Superseded by a newer run (user retook while this was
-            // decoding) — drop this result, don't overwrite their field.
-            if (weightOcrRunIdRef.current !== runId) return;
-            setWeightOcrState((s) =>
-              reduceWeightOcrState(s, { type: 'OCR_SUCCESS', photoUri, value })
-            );
-            setWeight(String(value));
-            setWeightSource('ocr');
-            dirtyFieldsRef.current.weight = true;
-            setSubmitSuccess(false);
-            return;
-          }
-
-          lastRawText = ocrResult.text;
-        } catch (err) {
-          console.warn(
-            `[weight-ocr] recognizeText failed (attempt ${attempt}/${WEIGHT_OCR_MAX_ATTEMPTS}):`,
-            err instanceof Error ? err.message : err
-          );
-        }
-
-        if (attempt < WEIGHT_OCR_MAX_ATTEMPTS) {
-          await new Promise((resolve) => setTimeout(resolve, WEIGHT_OCR_RETRY_DELAY_MS));
-        }
-      }
-
-      // Unconditional (not __DEV__-gated — __DEV__ is false in this
-      // preview/production build, so a gated log would never surface):
-      // logs what ML Kit recognized on the last attempt so a real failure
-      // can be diagnosed from logcat instead of guessed at. Truncated to
-      // bound exposure of whatever else the camera picked up in frame.
-      console.warn(
-        `[weight-ocr] no candidate found after ${WEIGHT_OCR_MAX_ATTEMPTS} attempts, last raw OCR text (truncated):`,
-        JSON.stringify(lastRawText).slice(0, 200)
-      );
-      // Only count this failed photo toward the attempt budget if it's
-      // still the latest run — a superseded run must not advance the
-      // ladder (which could wrongly unlock manual entry early).
+    const failThisRun = () => {
+      // Only advance the attempt ladder if still the latest run — a superseded
+      // run must not unlock manual entry early.
       if (weightOcrRunIdRef.current === runId) {
         setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+      }
+    };
+
+    try {
+      if (!coachId || !userId || !session) {
+        failThisRun();
+        return;
+      }
+
+      // 1. Upload the photo to the platform.
+      let key: string;
+      try {
+        key = await uploadWeightPhoto(photoUri);
+      } catch (err) {
+        console.warn(
+          '[weight-ocr] photo upload failed:',
+          err instanceof Error ? err.message : err
+        );
+        failThisRun();
+        return;
+      }
+      if (weightOcrRunIdRef.current !== runId) return; // superseded mid-upload
+      // Retain the key so handleSubmit reuses it instead of uploading again.
+      // The latest photo wins — matches the "last photo is the proof" rule.
+      setUploadedWeightKey(key);
+
+      // 2. Ask the server to read the scale number from that photo.
+      let value: number | null = null;
+      try {
+        const res = await fetch(`${API_BASE}/api/weight/ocr`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ path: key }),
+        });
+        if (res.ok) {
+          value = ((await res.json()) as { weightKg: number | null }).weightKg;
+        } else {
+          console.warn('[weight-ocr] server OCR HTTP', res.status);
+        }
+      } catch (err) {
+        console.warn(
+          '[weight-ocr] server OCR request failed:',
+          err instanceof Error ? err.message : err
+        );
+      }
+
+      if (weightOcrRunIdRef.current !== runId) return; // superseded while reading
+
+      if (value !== null) {
+        setWeightOcrState((s) =>
+          reduceWeightOcrState(s, { type: 'OCR_SUCCESS', photoUri, value })
+        );
+        setWeight(String(value));
+        setWeightSource('ocr');
+        dirtyFieldsRef.current.weight = true;
+        setSubmitSuccess(false);
+      } else {
+        // Photo uploaded fine but unreadable — retake (or unlock manual after
+        // the budget). The uploaded photo is still retained as proof.
+        failThisRun();
       }
     } finally {
       // Clear the busy spinner only if no newer run has taken over.
@@ -1209,8 +1250,12 @@ export default function HomeScreen() {
         setPhotoKey(confirmedPath);
       }
 
-      let finalWeightPhotoKey: string | null = null;
-      if (weightOcrState.retainedPhotoUri) {
+      // runWeightOcr already uploaded the photo at capture to read it; reuse
+      // that key so the same photo is not uploaded twice. Only fall back to
+      // uploading here if there is a retained photo with no key yet (e.g. the
+      // capture-time upload failed but left a photo to retry).
+      let finalWeightPhotoKey: string | null = uploadedWeightKey;
+      if (!finalWeightPhotoKey && weightOcrState.retainedPhotoUri) {
         if (!coachId || !userId || !session) {
           setSubmitError('Weight photo upload failed. Try again.');
           setSubmitting(false);
@@ -1314,6 +1359,7 @@ export default function HomeScreen() {
         setExistingWeightPhotoKey(storedWeightPhotoKey);
         if (finalWeightPhotoKey !== null) {
           setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'RESET' }));
+          setUploadedWeightKey(null);
         }
       }
 

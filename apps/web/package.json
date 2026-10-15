@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0",
     "@coaching/supabase": "workspace:*",
     "@supabase/ssr": "^0.10.3",
     "next": "^14",
