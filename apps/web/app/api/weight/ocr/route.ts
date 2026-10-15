@@ -18,10 +18,13 @@ const MAX_WEIGHT_KG = 300
 
 // ML Kit (on-device) genuinely can't read seven-segment scale LCD/LED digits
 // (it drops the sparse "7" glyph), so the number is read server-side by a
-// vision model that handles those displays. Haiku: this is a high-volume,
-// one-number-per-log extraction, not a reasoning task — cheapest vision model
-// that does it. Bump to claude-sonnet-5-5 if accuracy on real photos wobbles.
-const OCR_MODEL = 'claude-haiku-5-5'
+// vision model that handles those displays. Benchmarked on 32 real client
+// photos (docs/WEIGHT_OCR_DEVICE_TEST.md context): Sonnet WITH thinking on is
+// the clear winner — 100% on upright photos, 53% on rotated/upside-down ones
+// (reasoning lets it mentally rotate), vs ~56% total for Haiku/thinking-off.
+// ~1¢/photo, which is nothing at this volume. ponytail: drop to haiku +
+// thinking disabled if per-read cost ever actually matters.
+const OCR_MODEL = 'claude-sonnet-5-5'
 
 export async function POST(req: NextRequest) {
   try {
@@ -103,11 +106,12 @@ export async function POST(req: NextRequest) {
     const anthropic = new Anthropic({ apiKey })
     const message = await anthropic.messages.create({
       model: OCR_MODEL,
-      max_tokens: 64,
-      // Reading a number off a display needs no reasoning. Haiku 5.5 thinks by
-      // default; left on, the 64-token budget is spent on thinking and no
-      // answer text is emitted. Disabled is accepted at effort <= high.
-      thinking: { type: 'disabled' },
+      // Thinking is ON (default/adaptive): clients photograph the scale
+      // sideways or upside-down, and reasoning is what lets the model mentally
+      // rotate and read them (benchmark: rotated accuracy 11% -> 53% with
+      // thinking). Thinking shares the token budget with the answer, so give it
+      // room — a bare number needs little, but the reasoning must fit first.
+      max_tokens: 1024,
       messages: [
         {
           role: 'user',
@@ -120,10 +124,12 @@ export async function POST(req: NextRequest) {
               type: 'text',
               text:
                 'This is a photo of a body-weight scale display (often a seven-segment LCD/LED). ' +
-                'Read the weight it shows, in kilograms. ' +
-                'Reply with ONLY the number (e.g. "72.5"). ' +
+                'The photo may be rotated sideways or upside-down — mentally rotate it so the ' +
+                'digits are upright before reading. ' +
+                'Read the full weight shown, in kilograms, including every decimal digit on the display. ' +
+                'Reply with ONLY the number (e.g. "72.5" or "81.70"). ' +
                 'If no scale reading is clearly visible, reply with exactly "none". ' +
-                'Do not add units, words, or any other text.',
+                'Never output a rotation angle, degrees, units, words, or any other text.',
             },
           ],
         },
