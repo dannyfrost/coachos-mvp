@@ -176,6 +176,7 @@ export default function DashboardClient({
             </div>
             <div
               style={{
+                marginLeft: 'auto',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
@@ -193,7 +194,7 @@ export default function DashboardClient({
                 style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 13, color: T.onSurface, fontFamily: font.body, width: '100%' }}
               />
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
               {FILTERS.map(f => (
                 <button
                   key={f}
