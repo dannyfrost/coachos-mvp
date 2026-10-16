@@ -136,7 +136,7 @@ export default function DashboardClient({
           style={{
             background: T.amberBg,
             color: T.amber,
-            borderRadius: 2,
+            borderRadius: 8,
             padding: '10px 16px',
             marginBottom: 20,
             fontSize: 13,
@@ -180,7 +180,7 @@ export default function DashboardClient({
                 alignItems: 'center',
                 gap: 8,
                 background: T.white,
-                borderRadius: 2,
+                borderRadius: 8,
                 padding: '7px 12px',
                 maxWidth: 240,
               }}
@@ -200,7 +200,7 @@ export default function DashboardClient({
                   onClick={() => setStatusFilter(f)}
                   style={{
                     padding: '5px 12px',
-                    borderRadius: 2,
+                    borderRadius: 8,
                     border: 'none',
                     cursor: 'pointer',
                     fontSize: 12,

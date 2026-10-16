@@ -35,7 +35,7 @@ export default function MessagesClient({ conversations }: { conversations: Conve
             onClick={() => setFilter(f)}
             style={{
               padding: '6px 14px',
-              borderRadius: 2,
+              borderRadius: 8,
               border: 'none',
               cursor: 'pointer',
               fontSize: 12,
@@ -94,7 +94,7 @@ export default function MessagesClient({ conversations }: { conversations: Conve
                     color: '#fff',
                     fontSize: 11,
                     fontWeight: 700,
-                    borderRadius: 2,
+                    borderRadius: 8,
                     padding: '2px 8px',
                     flexShrink: 0,
                   }}

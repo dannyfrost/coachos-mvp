@@ -32,7 +32,7 @@ function Toggle({ on, onChange, label, sub }: { on: boolean; onChange: (v: boole
         style={{
           width: 44,
           height: 24,
-          borderRadius: 2,
+          borderRadius: 8,
           background: on ? T.primary : T.surfaceHigh,
           position: 'relative',
           cursor: 'pointer',
@@ -47,7 +47,7 @@ function Toggle({ on, onChange, label, sub }: { on: boolean; onChange: (v: boole
             left: on ? 23 : 3,
             width: 18,
             height: 18,
-            borderRadius: 2,
+            borderRadius: 8,
             background: '#fff',
             transition: 'left 0.2s',
           }}

@@ -125,7 +125,7 @@ export default function ConversationClient({
                   maxWidth: '60%',
                   background: isMine ? T.primary : T.surfaceLow,
                   color: isMine ? '#fff' : T.onSurface,
-                  borderRadius: 2,
+                  borderRadius: 8,
                   padding: '9px 14px',
                 }}
               >
@@ -146,7 +146,7 @@ export default function ConversationClient({
           style={{
             flex: 1,
             padding: '10px 14px',
-            borderRadius: 2,
+            borderRadius: 8,
             border: 'none',
             background: T.surfaceLow,
             outline: 'none',

@@ -131,7 +131,7 @@ export default function FlashCard({
     <div
       style={{
         background: T.white,
-        borderRadius: 2,
+        borderRadius: 8,
         overflow: 'hidden',
         boxShadow: shadow.card,
         borderLeft: `4px solid ${BORDER_COLOR[card.status] ?? '#d1d5db'}`,
@@ -193,7 +193,7 @@ export default function FlashCard({
             style={{
               width: '100%',
               padding: '8px 10px',
-              borderRadius: 2,
+              borderRadius: 8,
               border: 'none',
               background: T.surfaceLow,
               borderBottom: `2px solid ${T.primary}`,

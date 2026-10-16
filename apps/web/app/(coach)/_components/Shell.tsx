@@ -190,7 +190,7 @@ export function Shell({
                       fontFamily: font.body,
                       fontSize: 9,
                       fontWeight: 700,
-                      borderRadius: 2,
+                      borderRadius: 8,
                       padding: '1px 6px',
                     }}
                   >

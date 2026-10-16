@@ -98,7 +98,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
         padding: 16,
       }}
     >
-      <div style={{ background: T.white, borderRadius: 2, width: '100%', maxWidth: 420, padding: 24 }}>
+      <div style={{ background: T.white, borderRadius: 8, width: '100%', maxWidth: 420, padding: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Invite Client</h2>
           <button
@@ -219,7 +219,7 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
 
   const selectStyle: React.CSSProperties = {
     padding: '8px 14px',
-    borderRadius: 2,
+    borderRadius: 8,
     border: 'none',
     cursor: 'pointer',
     fontFamily: font.body,
@@ -238,7 +238,7 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
             alignItems: 'center',
             gap: 8,
             background: T.white,
-            borderRadius: 2,
+            borderRadius: 8,
             padding: '8px 14px',
             flex: 1,
             maxWidth: 320,
