@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
@@ -121,18 +121,27 @@ export function Shell({
           flexDirection: 'column',
         }}
       >
-        <div style={{ padding: '24px 20px 20px' }}>
-          <div
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: '0.1em',
-              color: T.primary,
-              textTransform: 'uppercase',
-              marginBottom: 2,
-            }}
-          >
-            CoachOS
+        <div style={{ padding: '22px 18px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 16 }}>
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 8,
+                background: T.primary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontFamily: font.display,
+                fontWeight: 600,
+                fontSize: 15,
+                flexShrink: 0,
+              }}
+            >
+              C
+            </div>
+            <span style={{ fontFamily: font.body, fontWeight: 600, fontSize: 14, letterSpacing: '-0.01em', color: T.onSurface }}>CoachOS</span>
           </div>
           <div style={{ fontFamily: font.display, fontWeight: 600, fontSize: 18, color: T.onSurface }}>
             {workspaceName}
@@ -140,64 +149,53 @@ export function Shell({
           <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{activeClientCount} active clients</div>
         </div>
 
-        <nav style={{ flex: 1, padding: '0 10px' }}>
+        <nav style={{ flex: 1, padding: '0 12px' }}>
           {NAV.map((item) => {
             const active = item.href !== '#' && pathname.startsWith(item.href)
             return (
-              <a
-                key={item.id}
-                href={item.soon ? undefined : item.href}
-                onClick={item.soon ? (e) => e.preventDefault() : undefined}
-                aria-current={active ? 'page' : undefined}
-                className="shell-navitem"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: 6,
-                  border: 'none',
-                  cursor: item.soon ? 'default' : 'pointer',
-                  background: active ? T.primaryLight : 'transparent',
-                  marginBottom: 2,
-                  textDecoration: 'none',
-                  opacity: item.soon ? 0.5 : 1,
-                }}
-              >
-                <item.Icon
-                  size={ICON_SIZE}
-                  color={active ? T.primary : T.onSurfaceVar}
-                  strokeWidth={active ? 2.4 : 2}
-                />
-                <span
+              <Fragment key={item.id}>
+                {/* Group operational nav from workspace admin (Team/Reports/Settings). */}
+                {item.id === 'team' && <div style={{ height: 1, background: T.border, margin: '12px 12px' }} />}
+                <a
+                  href={item.soon ? undefined : item.href}
+                  onClick={item.soon ? (e) => e.preventDefault() : undefined}
+                  aria-current={active ? 'page' : undefined}
+                  className="shell-navitem"
                   style={{
-                    flex: 1,
-                    textAlign: 'left',
-                    fontFamily: font.body,
-                    fontSize: 13,
-                    fontWeight: active ? 700 : 500,
-                    color: active ? T.primary : T.onSurfaceVar,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    width: '100%',
+                    padding: '11px 14px',
+                    borderRadius: 10,
+                    border: 'none',
+                    cursor: item.soon ? 'default' : 'pointer',
+                    background: active ? T.primaryLight : 'transparent',
+                    marginBottom: 3,
+                    textDecoration: 'none',
+                    opacity: item.soon ? 0.5 : 1,
                   }}
                 >
-                  {item.label}
-                </span>
-                {item.soon && (
+                  <item.Icon size={ICON_SIZE} color={active ? T.primary : T.onSurfaceVar} strokeWidth={active ? 2.4 : 2} />
                   <span
                     style={{
-                      background: T.surfaceHigh,
-                      color: T.muted,
+                      flex: 1,
+                      textAlign: 'left',
                       fontFamily: font.body,
-                      fontSize: 9,
-                      fontWeight: 700,
-                      borderRadius: 8,
-                      padding: '1px 6px',
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 500,
+                      color: active ? T.primary : T.onSurfaceVar,
                     }}
                   >
-                    SOON
+                    {item.label}
                   </span>
-                )}
-              </a>
+                  {item.soon && (
+                    <span style={{ background: T.surfaceHigh, color: T.muted, fontFamily: font.body, fontSize: 9, fontWeight: 700, borderRadius: 8, padding: '1px 6px' }}>
+                      SOON
+                    </span>
+                  )}
+                </a>
+              </Fragment>
             )
           })}
         </nav>
