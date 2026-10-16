@@ -58,7 +58,6 @@ function Toggle({ on, onChange, label, sub }: { on: boolean; onChange: (v: boole
 }
 
 export default function SettingsClient(initial: Props) {
-  const [fullName, setFullName] = useState(initial.coachName)
   const [workspaceName, setWorkspaceName] = useState(initial.workspaceName)
   const [timezone, setTimezone] = useState(initial.timezone)
   const [absenceWarningDays, setAbsenceWarningDays] = useState(initial.absenceWarningDays)
@@ -85,16 +84,6 @@ export default function SettingsClient(initial: Props) {
     if (!user) {
       setSaving(false)
       setError('Session expired. Refresh and try again.')
-      return
-    }
-
-    const { error: nameError } = await supabase
-      .from('platform_users')
-      .update({ full_name: fullName })
-      .eq('id', user.id)
-    if (nameError) {
-      setSaving(false)
-      setError(nameError.message)
       return
     }
 
@@ -131,20 +120,12 @@ export default function SettingsClient(initial: Props) {
           <h2 style={{ margin: '0 0 16px', fontFamily: font.heading, fontWeight: 800, fontSize: 16, color: T.onSurface }}>Account</h2>
           <div style={{ marginBottom: 14 }}>
             <FieldLabel>Full name</FieldLabel>
-            <input
-              type="text"
-              required
-              minLength={2}
-              maxLength={100}
-              value={fullName}
-              onChange={e => setFullName(e.target.value)}
-              style={inputStyle}
-            />
+            <input type="text" value={initial.coachName} readOnly style={{ ...inputStyle, color: T.muted, cursor: 'not-allowed' }} />
           </div>
           <div>
             <FieldLabel>Email</FieldLabel>
             <input type="email" value={initial.coachEmail} readOnly style={{ ...inputStyle, color: T.muted, cursor: 'not-allowed' }} />
-            <p style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Your sign-in email. Contact support to change it.</p>
+            <p style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Your name and sign-in email. Contact support to change these.</p>
           </div>
         </Card>
 

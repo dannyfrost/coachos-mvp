@@ -110,7 +110,7 @@ export default async function DashboardPage() {
       )
       .neq('action_taken', 'resolved')
       .order('level', { ascending: false }) // '72h' > '48h' > '24h' lexically descending — matches urgency (most urgent first)
-      .limit(6),
+      .limit(100),
   ])
 
   const flashCards: FlashCardData[] = (flashCardsRes.data ?? []).map(c => ({
@@ -171,16 +171,24 @@ export default async function DashboardPage() {
 
   const unreadCount = unreadMessagesRes.count ?? 0
 
-  const attentionItems: AttentionItem[] = (attentionRes.data ?? []).map(e => {
+  // One row per client, not per event — rows arrive ordered by urgency, so the
+  // first time we see a client is its most urgent open absence. Show the 8 most
+  // urgent distinct clients.
+  const seenAttentionClients = new Set<string>()
+  const attentionItems: AttentionItem[] = []
+  for (const e of attentionRes.data ?? []) {
+    if (seenAttentionClients.has(e.client_id)) continue
+    seenAttentionClients.add(e.client_id)
     const client = e.clients as { platform_users: { full_name: string } | null } | null
-    return {
+    attentionItems.push({
       id: e.id,
       client_id: e.client_id,
       trigger_date: e.trigger_date,
       level: e.level,
       clientName: client?.platform_users?.full_name ?? 'Unknown',
-    }
-  })
+    })
+    if (attentionItems.length >= 8) break
+  }
 
   return (
     <DashboardClient
