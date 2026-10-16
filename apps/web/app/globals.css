@@ -123,7 +123,6 @@ html, body {
     right: 0;
     bottom: 0;
     z-index: 40;
-    background: #ffffff;
     border-top: 1px solid rgba(25,28,30,0.07);
   }
   .shell-overlay-more.is-open {
@@ -145,5 +144,71 @@ html, body {
   @keyframes page-rise {
     from { opacity: 0; }
     to { opacity: 1; }
+  }
+}
+
+/* Liquid-glass chrome. Floating navigation/controls ONLY — never content
+   (apple-design liquid-glass.md: glass belongs to the functional layer).
+   Translucent fill + backdrop blur + saturation, with an opaque fallback
+   under Reduce Transparency so it never fights accessibility settings. */
+.shell-glass-bar {
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+}
+.shell-glass-panel {
+  background: rgba(247, 249, 251, 0.82);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  backdrop-filter: blur(20px) saturate(1.3);
+  border-right: 1px solid rgba(25, 28, 30, 0.07);
+}
+.shell-topbar {
+  border-bottom: 1px solid rgba(25, 28, 30, 0.07);
+}
+.shell-sheet {
+  box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.12);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .shell-glass-bar {
+    background: #ffffff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .shell-glass-panel {
+    background: #f2f4f6;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Nav item hover (pointer only) — subtle, no layout shift. */
+@media (hover: hover) {
+  .shell-navitem:hover {
+    background: rgba(0, 72, 141, 0.06) !important;
+  }
+}
+
+/* Loading skeleton (see Skeleton in lib/design-system). Static fill by default;
+   the shimmer sweep only runs when motion is allowed. */
+.sk {
+  position: relative;
+  overflow: hidden;
+  background: #eceef1;
+}
+.sk::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sk::after {
+    animation: sk-shimmer 1.3s infinite;
+  }
+  @keyframes sk-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
   }
 }

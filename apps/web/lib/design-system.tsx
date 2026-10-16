@@ -30,9 +30,32 @@ export const shadow = {
 }
 
 export const font = {
-  heading: 'var(--font-fraunces), Georgia, serif',
+  // Neutral sans for dense coach UI (headings + body) — improves scanability.
+  // Fraunces is reserved for marketing / auth / empty-state display via
+  // `font.display`, keeping the editorial accent without slowing operators down.
+  heading: 'var(--font-public-sans), -apple-system, sans-serif',
   body: 'var(--font-public-sans), -apple-system, sans-serif',
+  display: 'var(--font-fraunces), Georgia, serif',
 }
+
+// Spacing scale (4px base). Prefer these over ad-hoc pixel values so rhythm
+// stays consistent across pages.
+export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const
+
+// Type scale (px), intentional steps for a clear hierarchy.
+export const type = {
+  caption: 11,
+  small: 12,
+  body: 14,
+  base: 16,
+  h3: 20,
+  h2: 24,
+  h1: 30,
+} as const
+
+// Elevation: flat stays the identity; exactly one soft shadow, for overlays
+// (dialogs/popovers) so layering reads correctly.
+export const elevation = { overlay: '0 8px 24px rgba(16,24,40,0.12)' } as const
 
 export function Card({
   children,
@@ -160,7 +183,7 @@ export function Btn({
 }) {
   const variants: Record<BtnVariant, React.CSSProperties> = {
     primary: {
-      background: `linear-gradient(135deg, ${T.primary}, ${T.primaryMid})`,
+      background: T.primary,
       color: '#fff',
       border: 'none',
     },
@@ -270,4 +293,20 @@ export function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/)
   if (parts.length === 0 || !parts[0]) return '?'
   return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase()
+}
+
+// Loading placeholder. Shimmer + reduced-motion handling live in globals.css
+// (`.sk`). Replaces the dead Tailwind skeletons in the route loading.tsx files.
+export function Skeleton({
+  w = '100%',
+  h = 16,
+  radius = 2,
+  style = {},
+}: {
+  w?: number | string
+  h?: number | string
+  radius?: number
+  style?: React.CSSProperties
+}) {
+  return <div className="sk" style={{ width: w, height: h, borderRadius: radius, ...style }} />
 }

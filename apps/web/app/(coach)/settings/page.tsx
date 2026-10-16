@@ -17,7 +17,11 @@ export default async function SettingsPage() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: platformUser } = await supabase.from('platform_users').select('role_type').eq('id', user.id).single()
+  const { data: platformUser } = await supabase
+    .from('platform_users')
+    .select('role_type, full_name, email')
+    .eq('id', user.id)
+    .single()
   if (platformUser?.role_type !== 'coach') redirect('/dashboard')
 
   const { data: coach, error } = await supabase.from('coaches').select('workspace_name, timezone, settings').eq('id', user.id).single()
@@ -31,6 +35,8 @@ export default async function SettingsPage() {
 
   return (
     <SettingsClient
+      coachName={platformUser?.full_name ?? ''}
+      coachEmail={platformUser?.email ?? user.email ?? ''}
       workspaceName={coach.workspace_name}
       timezone={coach.timezone}
       absenceWarningDays={typeof settings.absence_warning_days === 'number' ? settings.absence_warning_days : 2}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Search } from 'lucide-react'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
 import { T, font, Card, Badge, StatusWord, FlashDot, Btn, FieldLabel, inputStyle } from '../../../../lib/design-system'
 
@@ -243,6 +244,7 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
             maxWidth: 320,
           }}
         >
+          <Search size={15} color={T.muted} />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}

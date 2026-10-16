@@ -1,23 +1,23 @@
-export default function ClientProfileLoading() {
-  return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      {/* Header skeleton */}
-      <div className="h-8 bg-gray-200 rounded w-48 animate-pulse" />
-      <div className="h-4 bg-gray-200 rounded w-32 animate-pulse" />
+import { Skeleton, T } from '../../../../lib/design-system'
 
-      {/* Flash card skeleton */}
-      <div className="border rounded-lg p-4 space-y-3">
-        <div className="h-5 bg-gray-200 rounded w-24 animate-pulse" />
-        <div className="h-20 bg-gray-200 rounded animate-pulse" />
+export default function ClientProfileLoading() {
+  const panel = { border: `1px solid ${T.border}`, borderRadius: 2, padding: 16 }
+  return (
+    <div className="page-pad">
+      <Skeleton w={220} h={28} style={{ marginBottom: 10 }} />
+      <Skeleton w={140} h={14} style={{ marginBottom: 20 }} />
+
+      <div style={{ ...panel, marginBottom: 20 }}>
+        <Skeleton w={100} h={18} style={{ marginBottom: 12 }} />
+        <Skeleton h={80} />
       </div>
 
-      {/* Log timeline skeleton */}
-      <div className="border rounded-lg p-4 space-y-2">
-        <div className="h-5 bg-gray-200 rounded w-32 animate-pulse" />
+      <div style={panel}>
+        <Skeleton w={130} h={18} style={{ marginBottom: 10 }} />
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-10 bg-gray-200 rounded animate-pulse" />
+          <Skeleton key={i} h={40} style={{ marginBottom: 8 }} />
         ))}
       </div>
     </div>
-  );
+  )
 }

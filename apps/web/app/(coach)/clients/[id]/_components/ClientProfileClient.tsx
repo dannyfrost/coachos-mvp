@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
 import { T, font, Card, Badge, StatusWord, Btn, Avatar, initialsOf } from '../../../../../lib/design-system'
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
 type UserStatus = 'pending' | 'active' | 'paused' | 'suspended' | 'banned' | 'deactivated'
 type FlashStatus = 'green' | 'yellow' | 'red'
@@ -535,27 +536,51 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Sparkline({ points, unit, color }: { points: { date: string; value: number | null }[]; unit: string; color: string }) {
-  const values = points.map(p => p.value).filter((v): v is number => v !== null)
-  if (values.length === 0) {
+function TrendChart({ points, unit, color }: { points: { date: string; value: number | null }[]; unit: string; color: string }) {
+  const hasData = points.some(p => p.value !== null)
+  if (!hasData) {
     return <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>No data in this window.</p>
   }
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = max - min || 1
+  const data = points.map(p => ({
+    label: new Date(p.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+    value: p.value,
+  }))
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 70 }}>
-      {points.map(p => {
-        const pct = p.value !== null ? ((p.value - min) / range) * 80 + 10 : 0
-        return (
-          <div key={p.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
-            <div
-              title={p.value !== null ? `${p.value} ${unit}` : 'No log'}
-              style={{ width: '100%', height: `${p.value !== null ? pct : 2}%`, background: p.value !== null ? color : '#e5e7eb', borderRadius: '2px 2px 0 0' }}
-            />
-          </div>
-        )
-      })}
+    <div style={{ width: '100%', height: 180 }}>
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+          <CartesianGrid stroke={T.border} vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 11, fill: T.muted }}
+            tickLine={false}
+            axisLine={{ stroke: T.border }}
+            minTickGap={16}
+          />
+          <YAxis
+            tick={{ fontSize: 11, fill: T.muted }}
+            tickLine={false}
+            axisLine={false}
+            width={40}
+            domain={['dataMin - 1', 'dataMax + 1']}
+          />
+          <Tooltip
+            contentStyle={{ borderRadius: 4, border: `1px solid ${T.border}`, fontSize: 12, fontFamily: font.body, boxShadow: 'none' }}
+            labelStyle={{ color: T.muted }}
+            formatter={(value) => [`${value} ${unit}`, '']}
+          />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke={color}
+            strokeWidth={2}
+            dot={{ r: 3, fill: color }}
+            activeDot={{ r: 4 }}
+            connectNulls
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   )
 }
@@ -604,14 +629,14 @@ function ClientReportPanel({
       <div>
         <SectionLabelRow left="Weight Trend" right={`last ${chronoLogs.length} logs`} />
         <Card>
-          <Sparkline points={weightPoints} unit="kg" color={T.primary} />
+          <TrendChart points={weightPoints} unit="kg" color={T.primary} />
         </Card>
       </div>
 
       <div>
         <SectionLabelRow left="Steps Trend" right={`last ${chronoLogs.length} logs`} />
         <Card>
-          <Sparkline points={stepsPoints} unit="steps" color={T.successMid} />
+          <TrendChart points={stepsPoints} unit="steps" color={T.successMid} />
         </Card>
       </div>
 
