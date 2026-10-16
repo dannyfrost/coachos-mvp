@@ -180,7 +180,7 @@ function FileControls({ plan, canUpload, onUpdated }: { plan: PlanRow; canUpload
               style={{
                 display: 'inline-block',
                 padding: '5px 12px',
-                borderRadius: 2,
+                borderRadius: 8,
                 background: T.surfaceHigh,
                 color: T.primary,
                 fontSize: 12,
@@ -308,7 +308,7 @@ function PlanFormModal({
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
-      <div style={{ background: T.white, borderRadius: 2, width: '100%', maxWidth: 480, padding: 24, maxHeight: '85vh', overflowY: 'auto' }}>
+      <div style={{ background: T.white, borderRadius: 8, width: '100%', maxWidth: 480, padding: 24, maxHeight: '85vh', overflowY: 'auto' }}>
         <h2 style={{ margin: '0 0 16px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>
           {initial ? 'Edit Plan' : 'Create Plan'}
         </h2>
@@ -453,7 +453,7 @@ function AssignModal({
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
-      <div style={{ background: T.white, borderRadius: 2, width: '100%', maxWidth: 400, padding: 24 }}>
+      <div style={{ background: T.white, borderRadius: 8, width: '100%', maxWidth: 400, padding: 24 }}>
         <h2 style={{ margin: '0 0 6px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Assign Plan</h2>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: T.muted }}>{plan.title}</p>
 
@@ -558,7 +558,7 @@ export default function PlansClient({
 
   const selectStyle: React.CSSProperties = {
     padding: '8px 14px',
-    borderRadius: 2,
+    borderRadius: 8,
     border: 'none',
     cursor: 'pointer',
     fontFamily: font.body,
@@ -594,7 +594,7 @@ export default function PlansClient({
       </div>
 
       {archiveError && (
-        <div style={{ background: T.redBg, color: T.red, padding: '10px 14px', borderRadius: 2, marginBottom: 16, fontSize: 13, fontWeight: 600 }}>
+        <div style={{ background: T.redBg, color: T.red, padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 600 }}>
           {archiveError}
         </div>
       )}

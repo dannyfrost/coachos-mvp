@@ -13,8 +13,8 @@ function Bar({ label, value, total, color }: { label: string; value: number; tot
           {value} ({pct}%)
         </span>
       </div>
-      <div style={{ height: 8, borderRadius: 2, background: T.surfaceLow, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2 }} />
+      <div style={{ height: 8, borderRadius: 8, background: T.surfaceLow, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 8 }} />
       </div>
     </div>
   )
@@ -152,7 +152,7 @@ export default async function ReportsPage() {
               return (
                 <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                   <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', width: '100%' }}>
-                    <div style={{ width: '100%', height: `${Math.max(pct, 2)}%`, background: T.primary, borderRadius: '2px 2px 0 0' }} />
+                    <div style={{ width: '100%', height: `${Math.max(pct, 2)}%`, background: T.primary, borderRadius: '8px 8px 0 0' }} />
                   </div>
                   <span style={{ fontSize: 10, color: T.muted }}>{d.date.slice(5)}</span>
                 </div>

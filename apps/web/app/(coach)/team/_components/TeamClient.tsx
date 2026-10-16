@@ -96,7 +96,7 @@ function InviteModal({
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
-      <div style={{ background: T.white, borderRadius: 2, width: '100%', maxWidth: 440, padding: 24 }}>
+      <div style={{ background: T.white, borderRadius: 8, width: '100%', maxWidth: 440, padding: 24 }}>
         <h2 style={{ margin: '0 0 16px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Invite Staff</h2>
 
         {done ? (
@@ -206,7 +206,7 @@ function ManageClientsModal({
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
-      <div style={{ background: T.white, borderRadius: 2, width: '100%', maxWidth: 420, padding: 24 }}>
+      <div style={{ background: T.white, borderRadius: 8, width: '100%', maxWidth: 420, padding: 24 }}>
         <h2 style={{ margin: '0 0 4px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Manage Clients</h2>
         <p style={{ margin: '0 0 16px', fontSize: 13, color: T.muted }}>{staffMember.fullName}</p>
 
@@ -324,7 +324,7 @@ function RoleFormModal({
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
-      <div style={{ background: T.white, borderRadius: 2, width: '100%', maxWidth: 440, padding: 24 }}>
+      <div style={{ background: T.white, borderRadius: 8, width: '100%', maxWidth: 440, padding: 24 }}>
         <h2 style={{ margin: '0 0 16px', fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>
           {initial ? 'Edit Role' : 'New Role'}
         </h2>
@@ -386,7 +386,7 @@ function RolesModal({
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', padding: 16 }}>
-      <div style={{ background: T.white, borderRadius: 2, width: '100%', maxWidth: 520, padding: 24, maxHeight: '85vh', overflowY: 'auto' }}>
+      <div style={{ background: T.white, borderRadius: 8, width: '100%', maxWidth: 520, padding: 24, maxHeight: '85vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>Roles</h2>
           <Btn small onClick={() => setFormRole(null)}>
@@ -396,7 +396,7 @@ function RolesModal({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
           {roles.map(r => (
-            <div key={r.id} style={{ padding: 12, borderRadius: 2, background: T.surfaceLow, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <div key={r.id} style={{ padding: 12, borderRadius: 8, background: T.surfaceLow, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontWeight: 600, fontSize: 13, color: T.onSurface }}>{roleLabel(r.name, roles)}</span>
@@ -464,7 +464,7 @@ export default function TeamClient({ staff, activeClients, roles: initialRoles }
       </div>
 
       {statusError && (
-        <div style={{ background: T.redBg, color: T.red, padding: '10px 14px', borderRadius: 2, marginBottom: 16, fontSize: 13, fontWeight: 600 }}>
+        <div style={{ background: T.redBg, color: T.red, padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 600 }}>
           {statusError}
         </div>
       )}

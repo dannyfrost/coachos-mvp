@@ -1,7 +1,7 @@
 import { Skeleton, T } from '../../../../lib/design-system'
 
 export default function ClientProfileLoading() {
-  const panel = { border: `1px solid ${T.border}`, borderRadius: 2, padding: 16 }
+  const panel = { border: `1px solid ${T.border}`, borderRadius: 8, padding: 16 }
   return (
     <div className="page-pad">
       <Skeleton w={220} h={28} style={{ marginBottom: 10 }} />

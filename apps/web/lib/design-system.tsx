@@ -65,7 +65,7 @@ export function Card({
   style?: React.CSSProperties
 }) {
   return (
-    <div style={{ background: T.white, borderRadius: 2, border: `1px solid ${T.border}`, padding: 20, ...style }}>
+    <div style={{ background: T.white, borderRadius: 12, border: `1px solid ${T.border}`, padding: 20, ...style }}>
       {children}
     </div>
   )
@@ -98,7 +98,7 @@ export function Badge({ status, small, labelOverride }: { status: string; small?
         display: 'inline-flex',
         alignItems: 'center',
         padding: small ? '2px 8px' : '3px 10px',
-        borderRadius: 2,
+        borderRadius: 8,
         background: s.bg,
         color: s.text,
         fontSize: small ? 10 : 11,
@@ -199,7 +199,7 @@ export function Btn({
       disabled={disabled}
       style={{
         padding: small ? '5px 12px' : '8px 16px',
-        borderRadius: 2,
+        borderRadius: 8,
         cursor: disabled ? 'not-allowed' : 'pointer',
         fontFamily: font.body,
         fontWeight: 600,
@@ -258,7 +258,7 @@ export const inputStyle: React.CSSProperties = {
   background: T.surfaceLow,
   border: 'none',
   borderBottom: `2px solid ${T.primary}`,
-  borderRadius: '2px 2px 0 0',
+  borderRadius: '8px 8px 0 0',
   fontFamily: font.body,
   fontSize: 14,
   color: T.onSurface,
@@ -272,7 +272,7 @@ export function Avatar({ initials, size = 36 }: { initials: string; size?: numbe
       style={{
         width: size,
         height: size,
-        borderRadius: 2,
+        borderRadius: 8,
         background: T.primary,
         display: 'flex',
         alignItems: 'center',

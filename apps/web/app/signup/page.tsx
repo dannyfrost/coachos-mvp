@@ -68,7 +68,7 @@ export default function SignupPage() {
       <form
         onSubmit={handleSubmit}
         className="auth-card"
-        style={{ maxWidth: 400, padding: '2.5rem', background: T.white, borderRadius: 2, border: `1px solid ${T.border}`, boxShadow: shadow.float }}
+        style={{ maxWidth: 400, padding: '2.5rem', background: T.white, borderRadius: 8, border: `1px solid ${T.border}`, boxShadow: shadow.float }}
       >
         <div
           style={{
@@ -91,7 +91,7 @@ export default function SignupPage() {
               background: T.redBg,
               color: T.red,
               padding: '0.75rem',
-              borderRadius: 2,
+              borderRadius: 8,
               marginBottom: '1rem',
               fontSize: 13,
               fontWeight: 600,

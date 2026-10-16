@@ -63,7 +63,7 @@ export default function AlertsClient({ events: initialEvents }: { events: AlertR
 
   const selectStyle: React.CSSProperties = {
     padding: '8px 14px',
-    borderRadius: 2,
+    borderRadius: 8,
     border: 'none',
     cursor: 'pointer',
     fontFamily: font.body,
