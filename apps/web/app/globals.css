@@ -183,7 +183,7 @@ html, body {
 
 /* Nav item hover (pointer only) — subtle, no layout shift. */
 @media (hover: hover) {
-  .shell-navitem:hover {
+  .shell-navitem:not([aria-current]):hover {
     background: rgba(0, 72, 141, 0.06) !important;
   }
 }
