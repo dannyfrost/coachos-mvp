@@ -606,6 +606,8 @@ function ClientReportPanel({
   const lastMessage = messages[0] ?? null
 
   const unresolvedAbsences = absenceEvents.filter(e => !e.resolved_at).length
+  const [showAllAbsences, setShowAllAbsences] = useState(false)
+  const visibleAbsences = showAllAbsences ? absenceEvents : absenceEvents.slice(0, 5)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -689,7 +691,7 @@ function ClientReportPanel({
           <Card style={{ color: T.muted, fontSize: 13 }}>No absence events recorded.</Card>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {absenceEvents.map(e => (
+            {visibleAbsences.map(e => (
               <Card key={e.id} style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <StatusWord status={ABSENCE_LEVEL_STATUS[e.level] ?? 'pending'} labelOverride={e.level} />
@@ -701,6 +703,14 @@ function ClientReportPanel({
                 </div>
               </Card>
             ))}
+            {absenceEvents.length > 5 && (
+              <button
+                onClick={() => setShowAllAbsences(v => !v)}
+                style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: '4px 0', cursor: 'pointer', color: T.primary, fontSize: 13, fontWeight: 600, fontFamily: font.body }}
+              >
+                {showAllAbsences ? 'Show less' : `Show all ${absenceEvents.length}`}
+              </button>
+            )}
           </div>
         )}
       </div>
