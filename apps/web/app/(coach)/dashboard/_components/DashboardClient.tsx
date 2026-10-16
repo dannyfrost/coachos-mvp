@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { Search } from 'lucide-react'
 import FlashCard from './FlashCard'
 import NeedsAttentionPanel, { AttentionItem } from './NeedsAttentionPanel'
 import { T, font, Card, SectionLabel } from '../../../../lib/design-system'
@@ -112,14 +113,20 @@ export default function DashboardClient({
 
   const isTrial = subscription?.plan_name === 'trial' && !!subscription.current_period_end
 
+  // The red/yellow/green flash-card breakdown is shown as compact counts beside
+  // the Flash Cards section (and as the cards themselves), so the KPI row keeps
+  // only the four operational numbers a coach acts on first.
   const kpis = [
     { label: 'Active Clients', value: String(activeCount), color: T.primary },
-    { label: 'Missing Check-ins Today', value: String(missingCheckIns), color: T.redMid },
-    { label: 'Red', value: String(stats.red), color: T.redMid },
-    { label: 'Yellow', value: String(stats.yellow), color: T.amberMid },
-    { label: 'Green', value: String(stats.green), color: T.successMid },
-    { label: 'Unread Messages', value: String(unreadCount), color: T.primary },
+    { label: 'Missing Check-ins Today', value: String(missingCheckIns), color: missingCheckIns > 0 ? T.redMid : T.onSurface },
+    { label: 'Unread Messages', value: String(unreadCount), color: unreadCount > 0 ? T.primary : T.onSurface },
     { label: 'Adherence', value: `${adherencePct}%`, color: T.successMid },
+  ]
+
+  const flashCounts = [
+    { label: 'At risk', value: stats.red, color: T.redMid },
+    { label: 'Needs attention', value: stats.yellow, color: T.amberMid },
+    { label: 'On track', value: stats.green, color: T.successMid },
   ]
 
   return (
@@ -155,6 +162,18 @@ export default function DashboardClient({
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <SectionLabel>Flash Cards</SectionLabel>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {flashCounts.map(fc => (
+                <span
+                  key={fc.label}
+                  title={fc.label}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: T.onSurfaceVar }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: fc.color }} />
+                  {fc.value}
+                </span>
+              ))}
+            </div>
             <div
               style={{
                 display: 'flex',
@@ -166,6 +185,7 @@ export default function DashboardClient({
                 maxWidth: 240,
               }}
             >
+              <Search size={15} color={T.muted} />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}

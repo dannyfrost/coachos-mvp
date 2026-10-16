@@ -2,130 +2,53 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import {
+  LayoutDashboard,
+  Users,
+  FileText,
+  MessageSquare,
+  Bell,
+  UsersRound,
+  BarChart3,
+  Settings,
+  MoreHorizontal,
+  Menu,
+  type LucideIcon,
+} from 'lucide-react'
 import { T, font, Avatar, initialsOf } from '../../../lib/design-system'
 import { createSupabaseBrowserClient } from '@coaching/supabase/browser'
 
-type IconProps = { active: boolean }
 type NavItem = {
   id: string
   label: string
   href: string
-  Icon: React.ComponentType<IconProps>
+  Icon: LucideIcon
   soon?: boolean
 }
 
-function iconStroke(active: boolean) {
-  return active ? T.primary : T.onSurfaceVar
-}
-
-function DashboardIcon({ active }: IconProps) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" />
-      <rect x="14" y="3" width="7" height="7" />
-      <rect x="14" y="14" width="7" height="7" />
-      <rect x="3" y="14" width="7" height="7" />
-    </svg>
-  )
-}
-
-function ClientsIcon({ active }: IconProps) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 00-3-3.87" />
-      <path d="M16 3.13a4 4 0 010 7.75" />
-    </svg>
-  )
-}
-
-function PlansIcon({ active }: IconProps) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-    </svg>
-  )
-}
-
-function MessagesIcon({ active }: IconProps) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-    </svg>
-  )
-}
-
-function AlertsIcon({ active }: IconProps) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
-    </svg>
-  )
-}
-
-function ReportsIcon({ active }: IconProps) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="20" x2="18" y2="10" />
-      <line x1="12" y1="20" x2="12" y2="4" />
-      <line x1="6" y1="20" x2="6" y2="14" />
-    </svg>
-  )
-}
-
-function SettingsIcon({ active }: IconProps) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-    </svg>
-  )
-}
-
-function TeamIcon({ active }: IconProps) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 00-3-3.87" />
-      <path d="M16 3.13a4 4 0 010 7.75" />
-      <circle cx="9" cy="7" r="1" fill={iconStroke(active)} />
-    </svg>
-  )
-}
-
-function MoreIcon({ active }: IconProps) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={iconStroke(active)} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="5" cy="12" r="1.5" fill={iconStroke(active)} stroke="none" />
-      <circle cx="12" cy="12" r="1.5" fill={iconStroke(active)} stroke="none" />
-      <circle cx="19" cy="12" r="1.5" fill={iconStroke(active)} stroke="none" />
-    </svg>
-  )
-}
-
 const NAV: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', href: '/dashboard', Icon: DashboardIcon },
-  { id: 'clients', label: 'Clients', href: '/clients', Icon: ClientsIcon },
-  { id: 'plans', label: 'Plans', href: '/plans', Icon: PlansIcon },
-  { id: 'messages', label: 'Messages', href: '/messages', Icon: MessagesIcon },
-  { id: 'alerts', label: 'Alerts', href: '/alerts', Icon: AlertsIcon },
-  { id: 'team', label: 'Team', href: '/team', Icon: TeamIcon },
-  { id: 'reports', label: 'Reports', href: '/reports', Icon: ReportsIcon },
-  { id: 'settings', label: 'Settings', href: '/settings', Icon: SettingsIcon },
+  { id: 'dashboard', label: 'Dashboard', href: '/dashboard', Icon: LayoutDashboard },
+  { id: 'clients', label: 'Clients', href: '/clients', Icon: Users },
+  { id: 'plans', label: 'Plans', href: '/plans', Icon: FileText },
+  { id: 'messages', label: 'Messages', href: '/messages', Icon: MessageSquare },
+  { id: 'alerts', label: 'Alerts', href: '/alerts', Icon: Bell },
+  { id: 'team', label: 'Team', href: '/team', Icon: UsersRound },
+  { id: 'reports', label: 'Reports', href: '/reports', Icon: BarChart3 },
+  { id: 'settings', label: 'Settings', href: '/settings', Icon: Settings },
 ]
 
 // <768px bottom bar: a tight subset of NAV, relabeled for a thumb-width tab bar.
 const BOTTOM_NAV: NavItem[] = [
-  { id: 'dashboard', label: 'Home', href: '/dashboard', Icon: DashboardIcon },
-  { id: 'clients', label: 'Clients', href: '/clients', Icon: ClientsIcon },
-  { id: 'messages', label: 'Inbox', href: '/messages', Icon: MessagesIcon },
-  { id: 'alerts', label: 'Alerts', href: '/alerts', Icon: AlertsIcon },
+  { id: 'dashboard', label: 'Home', href: '/dashboard', Icon: LayoutDashboard },
+  { id: 'clients', label: 'Clients', href: '/clients', Icon: Users },
+  { id: 'messages', label: 'Inbox', href: '/messages', Icon: MessageSquare },
+  { id: 'alerts', label: 'Alerts', href: '/alerts', Icon: Bell },
 ]
 
 // Remaining NAV entries, reached via the bottom bar's "More" sheet.
-const MORE_NAV: NavItem[] = NAV.filter(item => !BOTTOM_NAV.some(b => b.id === item.id))
+const MORE_NAV: NavItem[] = NAV.filter((item) => !BOTTOM_NAV.some((b) => b.id === item.id))
+
+const ICON_SIZE = 18
 
 export function Shell({
   coachName,
@@ -190,14 +113,12 @@ export function Shell({
         onClick={() => setNavOpen(false)}
       />
       <div
-        className={`shell-sidebar${navOpen ? ' is-open' : ''}`}
+        className={`shell-sidebar shell-glass-panel${navOpen ? ' is-open' : ''}`}
         style={{
           width: 220,
-          background: T.surfaceLow,
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
-          borderRight: `1px solid ${T.border}`,
         }}
       >
         <div style={{ padding: '24px 20px 20px' }}>
@@ -213,36 +134,42 @@ export function Shell({
           >
             CoachOS
           </div>
-          <div style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 16, color: T.onSurface }}>
+          <div style={{ fontFamily: font.display, fontWeight: 600, fontSize: 18, color: T.onSurface }}>
             {workspaceName}
           </div>
           <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{activeClientCount} active clients</div>
         </div>
 
         <nav style={{ flex: 1, padding: '0 10px' }}>
-          {NAV.map(item => {
+          {NAV.map((item) => {
             const active = item.href !== '#' && pathname.startsWith(item.href)
             return (
               <a
                 key={item.id}
                 href={item.soon ? undefined : item.href}
-                onClick={item.soon ? e => e.preventDefault() : undefined}
+                onClick={item.soon ? (e) => e.preventDefault() : undefined}
+                aria-current={active ? 'page' : undefined}
+                className="shell-navitem"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 10,
                   width: '100%',
                   padding: '10px 12px',
-                  borderRadius: 2,
+                  borderRadius: 6,
                   border: 'none',
                   cursor: item.soon ? 'default' : 'pointer',
-                  background: 'transparent',
+                  background: active ? T.primaryLight : 'transparent',
                   marginBottom: 2,
                   textDecoration: 'none',
                   opacity: item.soon ? 0.5 : 1,
                 }}
               >
-                <item.Icon active={active} />
+                <item.Icon
+                  size={ICON_SIZE}
+                  color={active ? T.primary : T.onSurfaceVar}
+                  strokeWidth={active ? 2.4 : 2}
+                />
                 <span
                   style={{
                     flex: 1,
@@ -251,8 +178,6 @@ export function Shell({
                     fontSize: 13,
                     fontWeight: active ? 700 : 500,
                     color: active ? T.primary : T.onSurfaceVar,
-                    textDecoration: active ? 'underline' : 'none',
-                    textUnderlineOffset: 3,
                   }}
                 >
                   {item.label}
@@ -294,38 +219,37 @@ export function Shell({
       </div>
 
       <nav
-        className="shell-bottombar"
+        className="shell-bottombar shell-glass-bar"
         style={{
           height: 60,
           alignItems: 'stretch',
           padding: '0 4px',
         }}
       >
-        {BOTTOM_NAV.map(item => {
+        {BOTTOM_NAV.map((item) => {
           const active = pathname.startsWith(item.href)
           return (
             <a
               key={item.id}
               href={item.href}
+              aria-current={active ? 'page' : undefined}
               style={{
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 2,
+                gap: 3,
                 textDecoration: 'none',
               }}
             >
-              <item.Icon active={active} />
+              <item.Icon size={20} color={active ? T.primary : T.onSurfaceVar} strokeWidth={active ? 2.4 : 2} />
               <span
                 style={{
                   fontFamily: font.body,
                   fontSize: 10,
                   fontWeight: active ? 700 : 500,
                   color: active ? T.primary : T.onSurfaceVar,
-                  textDecoration: active ? 'underline' : 'none',
-                  textUnderlineOffset: 3,
                 }}
               >
                 {item.label}
@@ -334,7 +258,7 @@ export function Shell({
           )
         })}
         <button
-          onClick={() => setMoreOpen(v => !v)}
+          onClick={() => setMoreOpen((v) => !v)}
           aria-label="More"
           style={{
             flex: 1,
@@ -342,21 +266,19 @@ export function Shell({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 2,
+            gap: 3,
             border: 'none',
             background: 'none',
             cursor: 'pointer',
           }}
         >
-          <MoreIcon active={moreOpen} />
+          <MoreHorizontal size={20} color={moreOpen ? T.primary : T.onSurfaceVar} strokeWidth={2} />
           <span
             style={{
               fontFamily: font.body,
               fontSize: 10,
               fontWeight: moreOpen ? 700 : 500,
               color: moreOpen ? T.primary : T.onSurfaceVar,
-              textDecoration: moreOpen ? 'underline' : 'none',
-              textUnderlineOffset: 3,
             }}
           >
             More
@@ -370,41 +292,41 @@ export function Shell({
       />
       {moreOpen && (
         <div
+          className="shell-sheet shell-glass-bar"
           style={{
             position: 'fixed',
             left: 0,
             right: 0,
             bottom: 60,
             zIndex: 41,
-            background: T.white,
-            borderTop: `1px solid ${T.border}`,
-            borderRadius: '2px 2px 0 0',
+            borderRadius: '10px 10px 0 0',
             padding: '8px 8px 4px',
           }}
         >
-          {MORE_NAV.map(item => {
+          {MORE_NAV.map((item) => {
             const active = pathname.startsWith(item.href)
             return (
               <a
                 key={item.id}
                 href={item.href}
+                aria-current={active ? 'page' : undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 12,
                   padding: '12px 14px',
+                  borderRadius: 6,
+                  background: active ? T.primaryLight : 'transparent',
                   textDecoration: 'none',
                 }}
               >
-                <item.Icon active={active} />
+                <item.Icon size={ICON_SIZE} color={active ? T.primary : T.onSurfaceVar} strokeWidth={active ? 2.4 : 2} />
                 <span
                   style={{
                     fontFamily: font.body,
                     fontSize: 14,
                     fontWeight: active ? 700 : 500,
                     color: active ? T.primary : T.onSurfaceVar,
-                    textDecoration: active ? 'underline' : 'none',
-                    textUnderlineOffset: 3,
                   }}
                 >
                   {item.label}
@@ -417,10 +339,9 @@ export function Shell({
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div
+          className="shell-topbar shell-glass-bar"
           style={{
             height: 60,
-            background: T.white,
-            borderBottom: `1px solid ${T.border}`,
             display: 'flex',
             alignItems: 'center',
             gap: 14,
@@ -430,7 +351,7 @@ export function Shell({
         >
           <button
             className="shell-hamburger"
-            onClick={() => setNavOpen(v => !v)}
+            onClick={() => setNavOpen((v) => !v)}
             aria-label="Toggle navigation"
             style={{
               alignItems: 'center',
@@ -445,13 +366,9 @@ export function Shell({
               flexShrink: 0,
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={T.onSurface} strokeWidth="2.2" strokeLinecap="round">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
+            <Menu size={20} color={T.onSurface} strokeWidth={2.2} />
           </button>
-          <h1 style={{ margin: 0, fontFamily: font.heading, fontWeight: 800, fontSize: 18, color: T.onSurface }}>{title}</h1>
+          <h1 style={{ margin: 0, fontFamily: font.heading, fontWeight: 700, fontSize: 18, color: T.onSurface }}>{title}</h1>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>{children}</div>
       </div>

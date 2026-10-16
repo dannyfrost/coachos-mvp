@@ -1,11 +1,13 @@
+import { Skeleton } from '../../../lib/design-system'
+
 export default function ClientsLoading() {
   return (
-    <div className="p-6 space-y-4">
-      <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
-      <div className="h-10 w-full bg-gray-200 rounded animate-pulse" />
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="h-14 w-full bg-gray-200 rounded animate-pulse" />
+    <div className="page-pad">
+      <Skeleton w={200} h={28} style={{ marginBottom: 16 }} />
+      <Skeleton h={40} style={{ marginBottom: 16 }} />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Skeleton key={i} h={56} style={{ marginBottom: 8 }} />
       ))}
     </div>
-  );
+  )
 }

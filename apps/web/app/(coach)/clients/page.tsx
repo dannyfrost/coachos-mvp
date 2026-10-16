@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@coaching/supabase/ssr-server';
 import ClientsClient, { ClientRow } from './_components/ClientsClient';
+import { T } from '../../../lib/design-system';
 
 export default async function ClientsPage() {
   const cookieStore = cookies();
@@ -22,7 +23,7 @@ export default async function ClientsPage() {
 
   if (clientsError) {
     console.error('clients fetch error', clientsError);
-    return <p className="p-6 text-red-600">Failed to load clients.</p>;
+    return <p style={{ padding: 24, color: T.red }}>Failed to load clients.</p>;
   }
 
   const clients = rawClients ?? [];
