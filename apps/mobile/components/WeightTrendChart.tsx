@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { T, fontFamily, FieldLabel } from '../lib/design-system';
+import { Theme, fontFamily, FieldLabel, useTheme } from '../lib/design-system';
 import { fmtDateShort } from '../lib/stats';
 
 type WeightPoint = {
@@ -14,6 +14,8 @@ type WeightTrendChartProps = {
 };
 
 export default function WeightTrendChart({ points }: WeightTrendChartProps) {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const validPoints = points.filter(
     (p): p is { date: string; value: number } => p.value !== null
   );
@@ -124,7 +126,7 @@ export default function WeightTrendChart({ points }: WeightTrendChartProps) {
             strokeLinejoin="round"
           />
           <Circle cx={last.x} cy={last.y} r={5} fill={T.primary} />
-          <Circle cx={last.x} cy={last.y} r={3} fill={T.white} />
+          <Circle cx={last.x} cy={last.y} r={3} fill={T.surface} />
         </Svg>
       </View>
 
@@ -142,7 +144,8 @@ export default function WeightTrendChart({ points }: WeightTrendChartProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   container: {
     width: '100%',
   },

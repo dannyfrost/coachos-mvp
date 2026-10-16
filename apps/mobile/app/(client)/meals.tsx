@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,17 +19,17 @@ import { router, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
-  T,
+  Theme,
+  useTheme,
   fontFamily,
   Card,
   Btn,
   FieldLabel,
   SectionLabel,
-  inputStyle,
-  screenBackground,
-  screenWashColors,
+  inputStyleFor,
   TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
+import { notify } from '../../lib/haptics';
 import {
   MEAL_TYPE_ORDER,
   MealType,
@@ -68,6 +68,8 @@ type MealCardState = {
 const MEAL_TYPES = MEAL_TYPE_ORDER;
 
 export default function MealsScreen() {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -132,6 +134,7 @@ export default function MealsScreen() {
   });
 
   const playSuccessAnim = (type: MealType) => {
+    notify(); // success haptic paired with the "Saved ✓" confirmation
     const anim = successAnimRefs.current[type];
     anim.setValue(0);
     Animated.sequence([
@@ -415,9 +418,9 @@ export default function MealsScreen() {
   const kcalLeft = computeKcalLeft(loggedMealTypes, effectiveMealCap, effectiveMealKcalMap);
 
   return (
-    <View style={screenBackground}>
+    <View style={{ flex: 1, backgroundColor: T.screenBg }}>
       <LinearGradient
-        colors={screenWashColors}
+        colors={T.washColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -565,7 +568,7 @@ export default function MealsScreen() {
                     style={styles.saveButton}
                   >
                     {card.saving ? (
-                      <ActivityIndicator color={T.white} size="small" />
+                      <ActivityIndicator color={T.onPrimary} size="small" />
                     ) : (
                       `Save ${label}`
                     )}
@@ -591,7 +594,8 @@ export default function MealsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 24,
@@ -679,7 +683,7 @@ const styles = StyleSheet.create({
     color: T.muted,
   },
   input: {
-    ...inputStyle,
+    ...inputStyleFor(T),
     marginBottom: 8,
   },
   multiline: {
@@ -728,7 +732,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: T.border,
-    backgroundColor: T.white,
+    backgroundColor: T.surfaceHigh,
   },
   editPhotoButtonText: {
     fontSize: 13,

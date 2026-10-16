@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
-  T,
+  Theme,
+  useTheme,
   fontFamily,
   Card,
   FieldLabel,
@@ -39,14 +40,13 @@ import {
   Btn,
   Avatar,
   initialsOf,
-  inputStyle,
+  inputStyleFor,
   cardShadow,
   translucentCardShadow,
-  screenBackground,
-  screenWashColors,
   StatusWord,
   TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
+import { selection, notify } from '../../lib/haptics';
 import {
   MEAL_TYPE_ORDER,
   MealType,
@@ -187,6 +187,8 @@ function fmtMessageTime(iso: string): string {
 }
 
 export default function HomeScreen() {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
 
@@ -281,6 +283,7 @@ export default function HomeScreen() {
   const submitSuccessAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!submitSuccess) return;
+    notify(); // success haptic paired with the "Logged ✓" confirmation
     submitSuccessAnim.setValue(0);
     Animated.sequence([
       Animated.timing(submitSuccessAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
@@ -1080,6 +1083,7 @@ export default function HomeScreen() {
   };
 
   const handleMealTypeChange = (type: MealType | null) => {
+    if (type) selection(); // light tick when picking a sitting slice
     setSelectedMealType(type);
     setSubmitSuccess(false);
     setSubmitError(null);
@@ -1492,7 +1496,7 @@ export default function HomeScreen() {
       iconKey: 'scale',
       done: weightDone,
       optional: false,
-      chipBg: '#e8f1fb',
+      chipBg: T.primaryLight,
       chipColor: T.primary,
       onTap: () => {
         weightInputRef.current?.focus();
@@ -1627,9 +1631,9 @@ export default function HomeScreen() {
   const blocked = isSubmitBlocked(userStatus, subStatus);
 
   return (
-    <View style={screenBackground}>
+    <View style={{ flex: 1, backgroundColor: T.screenBg }}>
       <LinearGradient
-        colors={screenWashColors}
+        colors={T.washColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -1829,7 +1833,7 @@ export default function HomeScreen() {
                             : styles.taskCheckboxEmpty,
                         ]}
                       >
-                        {task.done && <IconCheck size={12} color={T.white} strokeWidth={2.5} />}
+                        {task.done && <IconCheck size={12} color={T.onPrimary} strokeWidth={2.5} />}
                       </View>
                       <Chip
                         iconKey={task.iconKey}
@@ -1867,7 +1871,7 @@ export default function HomeScreen() {
                   <Chip
                     iconKey="scale"
                     size={12}
-                    bg="#e8f1fb"
+                    bg={T.primaryLight}
                     color={T.primary}
                     chipSize={24}
                     radius={6}
@@ -1953,7 +1957,7 @@ export default function HomeScreen() {
                 <Chip
                   iconKey="scale"
                   size={13}
-                  bg="#e8f1fb"
+                  bg={T.primaryLight}
                   color={T.primary}
                   chipSize={26}
                   radius={7}
@@ -2409,7 +2413,7 @@ export default function HomeScreen() {
               style={styles.submitButton}
             >
               {submitting ? (
-                <ActivityIndicator color={T.white} />
+                <ActivityIndicator color={T.onPrimary} />
               ) : submitSuccess ? (
                 'Edit'
               ) : (
@@ -2430,7 +2434,8 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 20,
@@ -2821,7 +2826,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: T.border,
-    backgroundColor: T.white,
+    backgroundColor: T.surfaceLow,
   },
   sittingSliceSelected: {
     borderColor: T.primary,
@@ -2839,7 +2844,7 @@ const styles = StyleSheet.create({
     color: T.onSurface,
   },
   sittingSliceLabelFilled: {
-    color: T.white,
+    color: T.onPrimary,
   },
   sittingSliceKcal: {
     fontSize: 11,
@@ -2848,7 +2853,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   sittingSliceKcalFilled: {
-    color: 'rgba(255,255,255,0.8)',
+    color: T.onPrimary,
+    opacity: 0.8,
   },
   quietFieldLabel: {
     fontSize: 9,
@@ -2856,7 +2862,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   input: {
-    ...inputStyle,
+    ...inputStyleFor(T),
     marginBottom: 16,
   },
   multiline: {
@@ -2892,7 +2898,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: T.border,
-    backgroundColor: T.white,
+    backgroundColor: T.surfaceHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2987,7 +2993,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: T.border,
-    backgroundColor: T.white,
+    backgroundColor: T.surfaceHigh,
   },
   editPhotoButtonText: {
     fontSize: 14,
@@ -3009,7 +3015,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: 'center',
-    backgroundColor: T.white,
+    backgroundColor: T.surfaceHigh,
     marginBottom: 16,
     ...cardShadow,
   },

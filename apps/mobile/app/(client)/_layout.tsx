@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, ComponentProps } from 'react';
+import React, { useRef, useEffect, useState, useMemo, ComponentProps } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { T, fontFamily, translucentCardShadow } from '../../lib/design-system';
+import { Theme, useTheme, fontFamily, translucentCardShadow, GlassSurface } from '../../lib/design-system';
+import { selection } from '../../lib/haptics';
 
 type CustomTabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0];
 
@@ -25,16 +26,23 @@ function TabItem({
   descriptor: CustomTabBarProps['descriptors'][string];
   navigation: CustomTabBarProps['navigation'];
 }) {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const scaleAnim = useRef(new Animated.Value(isFocused ? 1.18 : 1.0)).current;
 
   useEffect(() => {
+    const target = isFocused ? 1.18 : 1.0;
+    if (T.reduceMotion) {
+      scaleAnim.setValue(target); // no spring under Reduce Motion
+      return;
+    }
     Animated.spring(scaleAnim, {
-      toValue: isFocused ? 1.18 : 1.0,
+      toValue: target,
       friction: 6,
       tension: 140,
       useNativeDriver: true,
     }).start();
-  }, [isFocused, scaleAnim]);
+  }, [isFocused, scaleAnim, T.reduceMotion]);
 
   const { options } = descriptor;
   const label =
@@ -52,6 +60,7 @@ function TabItem({
     });
 
     if (!isFocused && !event.defaultPrevented) {
+      selection(); // light tick on tab change
       navigation.navigate(route.name, route.params);
     }
   };
@@ -125,6 +134,8 @@ function CustomTabBar({
   navigation,
   insets: tabBarInsets,
 }: CustomTabBarProps) {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const safeAreaInsets = useSafeAreaInsets();
   const insets = tabBarInsets ?? safeAreaInsets;
   const dimensions = useWindowDimensions();
@@ -151,6 +162,9 @@ function CustomTabBar({
         },
       ]}
     >
+      {/* Functional-layer glass: real blur on iOS, opaque on Android /
+          Reduce Transparency (see GlassSurface). */}
+      <GlassSurface radius={32} style={StyleSheet.absoluteFill} />
       {/* Tabs */}
       <View style={styles.tabsRow}>
         {state.routes.map((route) => {
@@ -171,6 +185,7 @@ function CustomTabBar({
 }
 
 export default function ClientLayout() {
+  const T = useTheme();
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}
@@ -236,12 +251,12 @@ export default function ClientLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   tabBarContainer: {
     // Floating capsule: lifted off the screen edges and above the safe
-    // area (see the inline `bottom` offset above), translucent frosted
-    // fill, fully rounded, no top border line.
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    // area (see the inline `bottom` offset above). Fill/blur/border now come
+    // from the GlassSurface rendered as an absolute-fill child.
     position: 'absolute',
     left: 16,
     right: 16,

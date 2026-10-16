@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,17 +14,18 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
-  T,
+  Theme,
+  useTheme,
   fontFamily,
   Card,
   Btn,
   FieldLabel,
-  inputStyle,
-  screenBackground,
-  screenWashColors,
+  inputStyleFor,
 } from '../lib/design-system';
 
 export default function ChangePasswordScreen() {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
@@ -81,9 +82,9 @@ export default function ChangePasswordScreen() {
   };
 
   return (
-    <View style={screenBackground}>
+    <View style={{ flex: 1, backgroundColor: T.screenBg }}>
       <LinearGradient
-        colors={screenWashColors}
+        colors={T.washColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -159,7 +160,7 @@ export default function ChangePasswordScreen() {
             style={styles.saveButton}
           >
             {savingPassword ? (
-              <ActivityIndicator color={T.white} />
+              <ActivityIndicator color={T.onPrimary} />
             ) : (
               'Update Password'
             )}
@@ -171,7 +172,8 @@ export default function ChangePasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 52,
@@ -202,7 +204,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   input: {
-    ...inputStyle,
+    ...inputStyleFor(T),
   },
   errorText: {
     color: T.red,

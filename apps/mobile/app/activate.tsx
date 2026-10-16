@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,13 +14,12 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
-  T,
+  Theme,
+  useTheme,
   fontFamily,
   Btn,
   FieldLabel,
-  inputStyle,
-  screenBackground,
-  screenWashColors,
+  inputStyleFor,
 } from '../lib/design-system';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
@@ -43,6 +42,8 @@ function getErrorMessage(status: number, json: { error?: string }): string {
 }
 
 export default function ActivateScreen() {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const params = useLocalSearchParams<{ token?: string }>();
   const [token, setToken] = useState(params.token ?? '');
   const [password, setPassword] = useState('');
@@ -130,9 +131,9 @@ export default function ActivateScreen() {
   }
 
   return (
-    <View style={screenBackground}>
+    <View style={{ flex: 1, backgroundColor: T.screenBg }}>
       <LinearGradient
-        colors={screenWashColors}
+        colors={T.washColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -232,7 +233,7 @@ export default function ActivateScreen() {
           accessibilityLabel="Activate account"
           style={styles.button}
         >
-          {loading ? <ActivityIndicator color={T.white} /> : 'Activate Account'}
+          {loading ? <ActivityIndicator color={T.onPrimary} /> : 'Activate Account'}
         </Btn>
 
         <TouchableOpacity
@@ -252,7 +253,8 @@ export default function ActivateScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   flex: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -278,7 +280,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   input: {
-    ...inputStyle,
+    ...inputStyleFor(T),
     marginBottom: 16,
   },
   multiline: {
