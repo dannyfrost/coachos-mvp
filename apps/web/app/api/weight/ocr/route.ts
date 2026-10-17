@@ -106,12 +106,17 @@ export async function POST(req: NextRequest) {
     const anthropic = new Anthropic({ apiKey })
     const message = await anthropic.messages.create({
       model: OCR_MODEL,
-      // Thinking is ON (default/adaptive): clients photograph the scale
-      // sideways or upside-down, and reasoning is what lets the model mentally
-      // rotate and read them (benchmark: rotated accuracy 11% -> 53% with
-      // thinking). Thinking shares the token budget with the answer, so give it
-      // room — a bare number needs little, but the reasoning must fit first.
-      max_tokens: 1024,
+      // Thinking is ON (sonnet-5-5 runs adaptive thinking by default): clients
+      // photograph the scale sideways or upside-down, and reasoning is what lets
+      // the model mentally rotate and read them (benchmark: rotated accuracy
+      // 11% -> 53% with thinking). CRITICAL: on sonnet-5-5 max_tokens caps
+      // thinking + answer COMBINED, and thinking tokens are billed/counted as
+      // output. At 1024 the adaptive thinking consumed the whole budget and the
+      // response came back with no text block at all, so every read returned
+      // null. Give thinking real room; the numeric answer itself is tiny.
+      // ponytail: if per-read cost matters, cap thinking with
+      // thinking: { type: 'between_tools' } + output_config: { effort: 'low' }.
+      max_tokens: 4096,
       messages: [
         {
           role: 'user',
