@@ -88,6 +88,7 @@ import {
 } from '../../lib/weightOcrState';
 import { weightSubmitError } from '../../lib/weightEvidence';
 import CompletionRing from '../../components/CompletionRing';
+import WeightCaptureCamera from '../../components/WeightCaptureCamera';
 
 const MEAL_OPTIONS = MEAL_TYPE_ORDER;
 
@@ -214,8 +215,11 @@ export default function HomeScreen() {
   const [weightOcrBusy, setWeightOcrBusy] = useState(false);
   // Camera permission was denied — weight still needs a photo, so this
   // drives a recovery hint (open Settings / pick from library) rather
-  // than unlocking manual entry. See handleWeightCameraPress.
+  // than unlocking manual entry. Set by handleWeightGalleryPress; the guided
+  // camera (WeightCaptureCamera) shows its own grant prompt.
   const [weightCameraDenied, setWeightCameraDenied] = useState(false);
+  // Guided scale-photo camera (focus box + live quality gate + ML Kit hint).
+  const [weightCamOpen, setWeightCamOpen] = useState(false);
   // Weight photo key already stored on today's server row (when editing
   // an entry logged earlier). Counts as existing evidence so re-saving
   // the same day's weight doesn't demand a fresh photo.
@@ -917,32 +921,6 @@ export default function HomeScreen() {
     }
   };
 
-  const handleWeightCameraPress = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      // Do NOT unlock manual entry — that would let the client log a
-      // weight with no photo. Surface a recovery hint (enable access /
-      // choose from library) and keep the photo requirement in place.
-      setWeightCameraDenied(true);
-      return;
-    }
-    setWeightCameraDenied(false);
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-    });
-
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    if (asset.width < MIN_OCR_DIMENSION || asset.height < MIN_OCR_DIMENSION) {
-      setWeightPhotoTooSmall(true);
-      setWeightOcrState((s) => reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri: asset.uri }));
-      return;
-    }
-    await runWeightOcr(asset.uri);
-  };
-
   const handleWeightGalleryPress = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -968,14 +946,14 @@ export default function HomeScreen() {
   };
 
   // Single "From photo" entry point (spec: one quiet control, no visible
-  // Camera / Gallery pair). Offers both existing capture paths via an action
-  // sheet; handleWeightCameraPress / handleWeightGalleryPress are unchanged.
+  // Camera / Gallery pair). "Take Photo" opens the guided scale camera
+  // (WeightCaptureCamera); "Choose from Library" is the gallery fallback.
   const handleFromPhotoPress = () => {
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         { options: ['Take Photo', 'Choose from Library', 'Cancel'], cancelButtonIndex: 2 },
         (index) => {
-          if (index === 0) handleWeightCameraPress();
+          if (index === 0) setWeightCamOpen(true);
           if (index === 1) handleWeightGalleryPress();
         }
       );
@@ -987,7 +965,7 @@ export default function HomeScreen() {
       // builds. Letting the dialog fully close first (one tick) avoids
       // the race entirely.
       Alert.alert('From photo', undefined, [
-        { text: 'Take Photo', onPress: () => setTimeout(handleWeightCameraPress, 300) },
+        { text: 'Take Photo', onPress: () => setTimeout(() => setWeightCamOpen(true), 300) },
         { text: 'Choose from Library', onPress: () => setTimeout(handleWeightGalleryPress, 300) },
         { text: 'Cancel', style: 'cancel' },
       ]);
@@ -2099,6 +2077,22 @@ export default function HomeScreen() {
               </View>
                 );
               })()}
+
+              <WeightCaptureCamera
+                visible={weightCamOpen}
+                onClose={() => setWeightCamOpen(false)}
+                onCapture={(uri, w, h) => {
+                  setWeightCamOpen(false);
+                  if (w && h && (w < MIN_OCR_DIMENSION || h < MIN_OCR_DIMENSION)) {
+                    setWeightPhotoTooSmall(true);
+                    setWeightOcrState((s) =>
+                      reduceWeightOcrState(s, { type: 'OCR_FAILURE', photoUri: uri })
+                    );
+                    return;
+                  }
+                  runWeightOcr(uri);
+                }}
+              />
 
               {weight.length > 0 &&
                 weightOcrState.suggestedValue !== null &&
