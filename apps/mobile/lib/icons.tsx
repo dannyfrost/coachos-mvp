@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import Svg, { Path, Circle, Polyline, Line, Rect } from 'react-native-svg';
-import { T } from './design-system';
+import { T, useTheme } from './design-system';
 
 export type IconProps = {
   size?: number;
@@ -305,8 +305,8 @@ const ICON_COMPONENTS: Record<IconKey, React.ComponentType<IconProps>> = {
 export function Chip({
   iconKey,
   size = 14,
-  bg = T.surfaceLow,
-  color = T.primary,
+  bg,
+  color,
   chipSize = 28,
   radius = 8,
   style,
@@ -319,6 +319,7 @@ export function Chip({
   radius?: number;
   style?: StyleProp<ViewStyle>;
 }) {
+  const t = useTheme();
   const Component = ICON_COMPONENTS[iconKey];
   if (!Component) return null;
 
@@ -330,12 +331,12 @@ export function Chip({
           width: chipSize,
           height: chipSize,
           borderRadius: radius,
-          backgroundColor: bg,
+          backgroundColor: bg ?? t.surfaceLow,
         },
         style,
       ]}
     >
-      <Component size={size} color={color} strokeWidth={2} />
+      <Component size={size} color={color ?? t.primary} strokeWidth={2} />
     </View>
   );
 }

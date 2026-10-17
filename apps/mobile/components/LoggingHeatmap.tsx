@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { T, fontFamily, FieldLabel } from '../lib/design-system';
+import { Theme, fontFamily, FieldLabel, useTheme } from '../lib/design-system';
 import { IconCheck } from '../lib/icons';
 
 type DailyLogSummary = {
@@ -12,6 +12,8 @@ type LoggingHeatmapProps = {
 };
 
 export default function LoggingHeatmap({ logs }: LoggingHeatmapProps) {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const now = new Date();
   const dayOfWeek = now.getDay(); // 0 is Sun, 1 is Mon...
   const diffToMon = (dayOfWeek + 6) % 7; // days since Mon
@@ -51,7 +53,7 @@ export default function LoggingHeatmap({ logs }: LoggingHeatmapProps) {
               ]}
             >
               {day.hasLog && (
-                <IconCheck size={11} color={T.white} strokeWidth={2.5} />
+                <IconCheck size={11} color={T.onPrimary} strokeWidth={2.5} />
               )}
             </View>
             <Text style={styles.dayLabel}>{day.label}</Text>
@@ -62,7 +64,8 @@ export default function LoggingHeatmap({ logs }: LoggingHeatmapProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   container: {
     width: '100%',
   },

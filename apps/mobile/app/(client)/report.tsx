@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,14 +15,13 @@ import WeightTrendChart from '../../components/WeightTrendChart';
 import StepsBarChart from '../../components/StepsBarChart';
 import LoggingHeatmap from '../../components/LoggingHeatmap';
 import {
-  T,
+  Theme,
+  useTheme,
   fontFamily,
   Card,
   Btn,
   StatusWord,
   SectionLabel,
-  screenBackground,
-  screenWashColors,
   TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
 
@@ -67,6 +66,8 @@ function fmtDate(dateStr: string): string {
 }
 
 export default function ReportScreen() {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [logs, setLogs] = useState<DailyLogRow[]>([]);
@@ -180,9 +181,9 @@ export default function ReportScreen() {
   const stepsPoints = logs.map((l) => ({ date: l.log_date, value: l.steps }));
 
   return (
-    <View style={screenBackground}>
+    <View style={{ flex: 1, backgroundColor: T.screenBg }}>
       <LinearGradient
-        colors={screenWashColors}
+        colors={T.washColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -251,7 +252,7 @@ export default function ReportScreen() {
                       style={styles.viewPlanButton}
                     >
                       {openingPlan ? (
-                        <ActivityIndicator size="small" color={T.white} />
+                        <ActivityIndicator size="small" color={T.onPrimary} />
                       ) : (
                         'View Plan'
                       )}
@@ -300,7 +301,8 @@ export default function ReportScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 20,

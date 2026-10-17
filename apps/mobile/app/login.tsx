@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,13 +14,12 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
-  T,
+  Theme,
+  useTheme,
   fontFamily,
   Btn,
   FieldLabel,
-  inputStyle,
-  screenBackground,
-  screenWashColors,
+  inputStyleFor,
 } from '../lib/design-system';
 
 function getLoginErrorMessage(error: unknown): string {
@@ -39,6 +38,8 @@ function getLoginErrorMessage(error: unknown): string {
 }
 
 export default function LoginScreen() {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -79,9 +80,9 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={screenBackground}>
+    <View style={{ flex: 1, backgroundColor: T.screenBg }}>
       <LinearGradient
-        colors={screenWashColors}
+        colors={T.washColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -134,7 +135,7 @@ export default function LoginScreen() {
           accessibilityLabel="Log in"
           style={styles.button}
         >
-          {loading ? <ActivityIndicator color={T.white} /> : 'Log In'}
+          {loading ? <ActivityIndicator color={T.onPrimary} /> : 'Log In'}
         </Btn>
 
         <TouchableOpacity
@@ -154,7 +155,8 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   flex: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -180,7 +182,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   input: {
-    ...inputStyle,
+    ...inputStyleFor(T),
     marginBottom: 16,
   },
   error: {

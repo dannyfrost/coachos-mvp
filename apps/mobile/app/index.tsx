@@ -1,10 +1,12 @@
 import { Redirect } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
-import { T } from '../lib/design-system';
+import { Theme, useTheme } from '../lib/design-system';
 
 export default function Index() {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const [loading, setLoading] = useState(true);
   const [hasSession, setHasSession] = useState(false);
 
@@ -32,11 +34,12 @@ export default function Index() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: T.surface,
-  },
-});
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: T.screenBg,
+    },
+  });

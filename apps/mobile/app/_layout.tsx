@@ -9,7 +9,7 @@ import {
   PublicSans_700Bold,
   PublicSans_800ExtraBold,
 } from '@expo-google-fonts/public-sans';
-import { T } from '../lib/design-system';
+import { useTheme } from '../lib/design-system';
 // Registers the steps background task's TaskManager.defineTask call
 // unconditionally at app startup — required so Android can find the
 // task by name when it headless-relaunches the JS engine to run it,
@@ -17,6 +17,7 @@ import { T } from '../lib/design-system';
 import '../lib/stepsBackgroundTask';
 
 export default function RootLayout() {
+  const T = useTheme();
   const [fontsLoaded] = useFonts({
     PublicSans_400Regular,
     PublicSans_500Medium,
@@ -26,7 +27,7 @@ export default function RootLayout() {
   });
 
   if (!fontsLoaded) {
-    return <View style={{ flex: 1, backgroundColor: T.surface }} />;
+    return <View style={{ flex: 1, backgroundColor: T.screenBg }} />;
   }
 
   return (
@@ -38,6 +39,7 @@ export default function RootLayout() {
           animation: 'slide_from_right',
           gestureEnabled: true,
           gestureDirection: 'horizontal',
+          contentStyle: { backgroundColor: T.screenBg },
         }}
       />
     </>

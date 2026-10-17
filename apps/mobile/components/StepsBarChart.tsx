@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { T, fontFamily, FieldLabel } from '../lib/design-system';
+import { Theme, fontFamily, FieldLabel, useTheme } from '../lib/design-system';
 import { fmtDateShort } from '../lib/stats';
 
 type StepsPoint = {
@@ -14,6 +14,8 @@ type StepsBarChartProps = {
 };
 
 export default function StepsBarChart({ points }: StepsBarChartProps) {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const validPoints = points.filter(
     (p): p is { date: string; value: number } => p.value !== null
   );
@@ -107,7 +109,8 @@ export default function StepsBarChart({ points }: StepsBarChartProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   container: {
     width: '100%',
   },

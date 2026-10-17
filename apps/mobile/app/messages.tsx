@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,10 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
-  T,
+  Theme,
+  useTheme,
   fontFamily,
   Btn,
-  screenBackground,
-  screenWashColors,
 } from '../lib/design-system';
 import { IconDoubleCheck } from '../lib/icons';
 
@@ -46,6 +45,8 @@ function fmtTime(iso: string): string {
 }
 
 export default function MessagesScreen() {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -218,9 +219,9 @@ export default function MessagesScreen() {
   };
 
   return (
-    <View style={screenBackground}>
+    <View style={{ flex: 1, backgroundColor: T.screenBg }}>
       <LinearGradient
-        colors={screenWashColors}
+        colors={T.washColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -383,7 +384,7 @@ export default function MessagesScreen() {
             style={styles.sendBtn}
           >
             {sending ? (
-              <ActivityIndicator size="small" color={T.white} />
+              <ActivityIndicator size="small" color={T.onPrimary} />
             ) : (
               'Send'
             )}
@@ -395,7 +396,8 @@ export default function MessagesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 52,
@@ -520,7 +522,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   bubbleTextMine: {
-    color: T.white,
+    color: T.onPrimary,
   },
   bubbleTextTheirs: {
     color: T.onSurface,
@@ -554,7 +556,7 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 16 : 12,
     borderTopWidth: 1,
     borderTopColor: T.border,
-    backgroundColor: T.white,
+    backgroundColor: T.surface,
   },
   composerRow: {
     flexDirection: 'row',

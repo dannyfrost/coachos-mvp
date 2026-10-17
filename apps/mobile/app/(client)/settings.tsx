@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createMobileSupabaseClient } from '@coaching/supabase/mobile';
 import {
-  T,
+  Theme,
+  useTheme,
   fontFamily,
   Card,
   Btn,
@@ -23,9 +24,7 @@ import {
   FieldLabel,
   Avatar,
   initialsOf,
-  inputStyle,
-  screenBackground,
-  screenWashColors,
+  inputStyleFor,
   TAB_BAR_CLEARANCE,
 } from '../../lib/design-system';
 import { Chip } from '../../lib/icons';
@@ -38,6 +37,8 @@ type SubRow = {
 };
 
 export default function SettingsScreen() {
+  const T = useTheme();
+  const styles = useMemo(() => makeStyles(T), [T]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -258,9 +259,9 @@ export default function SettingsScreen() {
   }
 
   return (
-    <View style={screenBackground}>
+    <View style={{ flex: 1, backgroundColor: T.screenBg }}>
       <LinearGradient
-        colors={screenWashColors}
+        colors={T.washColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -414,7 +415,7 @@ export default function SettingsScreen() {
                 <Chip
                   iconKey="user"
                   size={15}
-                  bg="#e8f1fb"
+                  bg={T.primaryLight}
                   color={T.primary}
                   chipSize={34}
                   radius={10}
@@ -485,7 +486,7 @@ export default function SettingsScreen() {
                       accessibilityLabel="Save profile details"
                       style={styles.editButtonHalf}
                     >
-                      {savingProfile ? <ActivityIndicator color={T.white} /> : 'Save'}
+                      {savingProfile ? <ActivityIndicator color={T.onPrimary} /> : 'Save'}
                     </Btn>
                   </View>
                 </View>
@@ -568,7 +569,7 @@ export default function SettingsScreen() {
                 <Chip
                   iconKey="lock"
                   size={15}
-                  bg="#e8f1fb"
+                  bg={T.primaryLight}
                   color={T.primary}
                   chipSize={34}
                   radius={10}
@@ -601,7 +602,8 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (T: Theme) =>
+  StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 20,
@@ -659,7 +661,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   editInput: {
-    ...inputStyle,
+    ...inputStyleFor(T),
     marginBottom: 14,
   },
   editMultiline: {
