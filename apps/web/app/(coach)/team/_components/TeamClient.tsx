@@ -485,7 +485,7 @@ export default function TeamClient({ staff, activeClients, roles: initialRoles }
             }}
           >
             {['Name', 'Role', 'Status', 'Clients', 'Actions'].map(h => (
-              <span key={h} style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+              <span key={h} style={{ fontSize: 11, fontWeight: 600, color: T.muted }}>
                 {h}
               </span>
             ))}

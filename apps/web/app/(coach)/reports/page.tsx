@@ -23,7 +23,7 @@ function Bar({ label, value, total, color }: { label: string; value: number; tot
 function StatTile({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
     <Card style={{ padding: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, marginBottom: 6 }}>{label}</div>
       <div style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 26, color: color ?? T.onSurface, lineHeight: 1 }}>{value}</div>
     </Card>
   )
