@@ -298,7 +298,7 @@ export default function ClientProfileClient({
           }}
         >
           <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Flash Card</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.onSurface }}>Flash card</span>
             {flashCard && <StatusWord status={flashCard.status} />}
           </div>
           <div style={{ padding: '12px 16px' }}>
@@ -464,7 +464,7 @@ export default function ClientProfileClient({
                             }}
                           >
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: T.primary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: T.primary, marginBottom: 4 }}>
                                 {MEAL_LABELS[mType]}
                               </div>
                               <p style={{ margin: 0, fontSize: 13, color: T.onSurfaceVar, lineHeight: 1.5 }}>
@@ -530,7 +530,7 @@ export default function ClientProfileClient({
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 12 }}>
+    <div style={{ fontSize: 13, fontWeight: 700, color: T.onSurface, marginBottom: 12 }}>
       {children}
     </div>
   )
@@ -721,7 +721,7 @@ function ClientReportPanel({
 function SectionLabelRow({ left, right }: { left: string; right: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase' }}>{left}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: T.onSurface }}>{left}</div>
       <div style={{ fontSize: 11, color: T.muted }}>{right}</div>
     </div>
   )

@@ -292,8 +292,8 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
             borderBottom: `1px solid ${T.border}`,
           }}
         >
-          {['Client', 'Status', 'Assistant', 'Flash', 'Last Log', 'Subscription', 'Actions'].map(h => (
-            <span key={h} style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+          {['Client', 'Status', 'Assistant', 'Flash', 'Last log', 'Subscription', 'Actions'].map(h => (
+            <span key={h} style={{ fontSize: 11, fontWeight: 600, color: T.muted }}>
               {h}
             </span>
           ))}
@@ -306,6 +306,11 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
             const pu = c.platform_users!
             const status = statusOf(c)
             const isLoading = actionLoadingId === c.id
+            // Carry the dashboard's urgency spine into the roster: only rows that
+            // need action (red/yellow) get a colored left edge, so the eye lands
+            // on them first. On-track rows stay quiet.
+            const accent =
+              c.flash?.status === 'red' ? T.redMid : c.flash?.status === 'yellow' ? T.amberMid : 'transparent'
             return (
               <div
                 key={c.id}
@@ -313,7 +318,8 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
                   display: 'grid',
                   gridTemplateColumns: '2fr 1fr 1fr 80px 1fr 1fr 170px',
                   minWidth: 900,
-                  padding: '13px 20px',
+                  padding: '13px 20px 13px 17px',
+                  borderLeft: `3px solid ${accent}`,
                   borderBottom: i < filtered.length - 1 ? `1px solid ${T.border}` : 'none',
                   alignItems: 'center',
                 }}
@@ -324,9 +330,15 @@ export default function ClientsClient({ clients }: { clients: ClientRow[] }) {
                 </div>
                 <StatusWord status={status ?? pu.status} />
                 <span style={{ fontSize: 13, color: T.onSurface }}>{c.assistantName ?? '—'}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {c.flash ? <FlashDot status={c.flash.status} /> : <FlashDot status="—" />}
-                  <span style={{ fontSize: 11, color: T.muted }}>{c.flash?.status ?? '—'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  {c.flash ? (
+                    <>
+                      <FlashDot status={c.flash.status} />
+                      <StatusWord status={c.flash.status} />
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 13, color: T.muted }}>—</span>
+                  )}
                 </div>
                 <span style={{ fontSize: 13, color: T.onSurface }}>{fmtDate(c.flash?.last_log_at)}</span>
                 <div>
