@@ -5,8 +5,10 @@ import { createServiceRoleClient } from '@coaching/supabase/server'
 
 // Node runtime: the Anthropic SDK and base64 image handling need Node, not edge.
 export const runtime = 'nodejs'
-// A download + one vision call; keep headroom over the default.
-export const maxDuration = 30
+// A download + one vision call. Sonnet's adaptive thinking on hard/rotated
+// photos can run 20-30s (benchmarked), so give real headroom — a 30s cap 504s
+// those reads and the app shows nothing. 60 is the Vercel Hobby maximum.
+export const maxDuration = 60
 
 // Same path contract as the signed-upload-url route: {coach}/{client}/{file}.
 const UUID_SEG = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
+      console.error('[weight-ocr] ANTHROPIC_API_KEY is not set')
       return NextResponse.json({ error: 'OCR not configured' }, { status: 500 })
     }
 
@@ -151,11 +154,22 @@ export async function POST(req: NextRequest) {
     // token and range-check it the same way the mobile client did.
     const numMatch = text.replace(',', '.').match(/\d{1,3}(\.\d{1,2})?/)
     const weightKg = numMatch ? parseFloat(numMatch[0]) : null
-    if (weightKg === null || weightKg < MIN_WEIGHT_KG || weightKg > MAX_WEIGHT_KG) {
+    const inRange = weightKg !== null && weightKg >= MIN_WEIGHT_KG && weightKg <= MAX_WEIGHT_KG
+    // Diagnostic: raw model text + decision, visible in Vercel logs. No PII —
+    // only internal storage path (coach/client UUIDs) and the number read.
+    console.log(
+      `[weight-ocr] path=${rawPath} raw="${text}" parsed=${weightKg ?? 'null'} ` +
+        `inRange=${inRange} stop=${message.stop_reason} out=${message.usage.output_tokens}`
+    )
+    if (!inRange) {
       return NextResponse.json({ weightKg: null })
     }
     return NextResponse.json({ weightKg })
-  } catch {
+  } catch (err) {
+    console.error(
+      '[weight-ocr] unhandled error:',
+      err instanceof Error ? err.stack || err.message : err
+    )
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
