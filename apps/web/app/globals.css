@@ -65,6 +65,35 @@ html, body {
   }
 }
 
+/* Attention queue (the dashboard hero): two columns of client rows at wide
+   widths, one column on phones. Rows tint on pointer hover only. */
+.attention-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 20px;
+}
+@media (max-width: 720px) {
+  .attention-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (hover: hover) {
+  .attention-row:hover {
+    background: #f2f4f6;
+  }
+}
+
+/* Slim KPI strip under the hero: a quiet row of numbers, not a card wall. */
+.kpi-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  padding: 14px 20px;
+  background: #fff;
+  border: 1px solid rgba(25, 28, 30, 0.07);
+  border-radius: 12px;
+}
+
 /* Login/signup card: fills width on phones instead of a fixed pixel size. */
 .auth-card {
   width: 100%;

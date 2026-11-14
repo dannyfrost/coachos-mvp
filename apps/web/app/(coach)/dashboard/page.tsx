@@ -49,7 +49,7 @@ export default async function DashboardPage() {
 
   const { data: platformUser } = await supabase
     .from('platform_users')
-    .select('id, role_type, status')
+    .select('id, role_type, status, full_name')
     .eq('id', user.id)
     .single()
 
@@ -201,6 +201,7 @@ export default async function DashboardPage() {
       unreadCount={unreadCount}
       adherencePct={adherencePct}
       attentionItems={attentionItems}
+      coachName={(platformUser.full_name as string | null) ?? ''}
     />
   )
 }

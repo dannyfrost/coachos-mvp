@@ -163,7 +163,7 @@ export default function FlashCard({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ display: 'flex', gap: 18 }}>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, marginBottom: 2 }}>
                 Weight
               </div>
               <div style={{ fontFamily: font.heading, fontWeight: 700, fontSize: 18, color: T.onSurface }}>
@@ -171,7 +171,7 @@ export default function FlashCard({
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, marginBottom: 2 }}>
                 Steps
               </div>
               <div style={{ fontFamily: font.heading, fontWeight: 700, fontSize: 18, color: T.onSurface }}>
@@ -183,8 +183,8 @@ export default function FlashCard({
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
-            Coach Notes
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, marginBottom: 4 }}>
+            Coach notes
           </div>
           <textarea
             value={notesValue}

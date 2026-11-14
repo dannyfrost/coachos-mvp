@@ -220,12 +220,10 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
-        fontSize: 11,
+        fontSize: 13,
         fontWeight: 700,
-        color: T.muted,
-        letterSpacing: '0.07em',
-        textTransform: 'uppercase',
-        fontFamily: font.body,
+        color: T.onSurface,
+        fontFamily: font.heading,
         marginBottom: 10,
       }}
     >
@@ -238,11 +236,9 @@ export function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
-        fontSize: 11,
-        fontWeight: 700,
-        color: T.muted,
-        letterSpacing: '0.07em',
-        textTransform: 'uppercase',
+        fontSize: 12,
+        fontWeight: 600,
+        color: T.onSurfaceVar,
         fontFamily: font.body,
         marginBottom: 6,
       }}

@@ -44,6 +44,18 @@ type Props = {
   unreadCount: number
   adherencePct: number
   attentionItems: AttentionItem[]
+  coachName: string
+}
+
+function greeting(): string {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || ''
 }
 
 const SEVERITY_ORDER: Record<string, number> = { red: 0, yellow: 1, green: 2, paused: 3 }
@@ -59,6 +71,7 @@ export default function DashboardClient({
   unreadCount,
   adherencePct,
   attentionItems,
+  coachName,
 }: Props) {
   const [cards, setCards] = useState<FlashCardData[]>(initialCards)
   const [search, setSearch] = useState('')
@@ -147,18 +160,26 @@ export default function DashboardClient({
         </div>
       )}
 
-      <div className="dashboard-layout">
-        <div className="dashboard-main">
-          <div className="grid-stats" style={{ marginBottom: 24 }}>
-            {kpis.map(kpi => (
-              <Card key={kpi.label} style={{ padding: 16 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>
-                  {kpi.label}
-                </div>
-                <div style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 26, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
-              </Card>
-            ))}
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 24, color: T.onSurface, margin: 0 }}>
+          {greeting()}{firstName(coachName) ? `, ${firstName(coachName)}` : ''}
+        </h1>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <NeedsAttentionPanel items={attentionItems} />
+      </div>
+
+      <div className="kpi-strip" style={{ marginBottom: 28 }}>
+        {kpis.map(kpi => (
+          <div key={kpi.label}>
+            <div style={{ fontFamily: font.heading, fontWeight: 800, fontSize: 22, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: T.muted, marginTop: 4 }}>{kpi.label}</div>
           </div>
+        ))}
+      </div>
+
+      <div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <SectionLabel>Flash Cards</SectionLabel>
@@ -238,11 +259,6 @@ export default function DashboardClient({
               })}
             </div>
           )}
-        </div>
-
-        <div className="dashboard-attention-col">
-          <NeedsAttentionPanel items={attentionItems} />
-        </div>
       </div>
     </div>
   )
