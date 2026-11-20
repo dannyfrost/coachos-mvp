@@ -57,7 +57,7 @@ Record the build ID + commit below. Last known build `5572e303` is OLD — do no
 
 ## 3. Report (fill in)
 
-Date: ____  Tester: ____  Phone/Android: ____  Build ID: ____  Commit: ____
+Date: ____  Tester: ____  Phone/Android: ____  Build ID: 8122e1e0-5186-4efe-a69f-bf5da68287fe  Commit: c2f8198
 
 | # | Photo | True kg | Raw model text | Parsed | Latency s | Field showed | Pass |
 |---|-------|---------|----------------|--------|-----------|--------------|------|
