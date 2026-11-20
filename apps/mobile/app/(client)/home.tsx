@@ -641,15 +641,17 @@ export default function HomeScreen() {
         let source: 'health_connect' | 'device_counter' | null =
           steps !== null ? 'health_connect' : null;
 
-        // Android < 14 can't natively count for Health Connect, but if the
-        // device has a hardware step counter we read it directly (see
-        // lib/stepsNativeCounter.ts). Only attempt when HC yielded nothing AND
-        // the device is HC-unsupported but has the sensor — on an HC-capable
-        // device a null read is a genuine no_data, not a reason to double-count.
+        // HC yielded nothing. If the device has a hardware step counter, read it
+        // directly (lib/stepsNativeCounter.ts). On Android 14+ Health Connect
+        // aggregates on-device steps ONLY when some app feeds it, so an empty HC
+        // (no_data) on a phone that still has the sensor must fall back to the
+        // sensor or steps never populate — the real-world "steps missing" case.
+        // steps===null here means HC contributed nothing, so reading the sensor
+        // cannot double-count. Gate on the sensor alone, not on HC-unsupported.
         let counterStatus: string | null = null;
         if (steps === null) {
           const support0 = getStepCollectionSupport();
-          if (!support0.supported && support0.capability?.hasStepCounterSensor) {
+          if (support0.capability?.hasStepCounterSensor) {
             const counter = await readDeviceCounterSteps(today);
             counterStatus = counter.status;
             if (counter.status === 'ok') {
