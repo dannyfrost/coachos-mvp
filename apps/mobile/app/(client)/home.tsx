@@ -23,7 +23,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 import * as ImagePicker from 'expo-image-picker';
-import { recognizeText } from 'rn-mlkit-ocr';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { router, useFocusEffect } from 'expo-router';
@@ -68,7 +67,6 @@ import {
   getTodayISO,
   getYesterdayISO,
 } from '../../lib/stats';
-import { extractStepsCandidate } from '../../lib/stepsOcr';
 import { initialStepsOcrState, reduceStepsOcrState } from '../../lib/stepsOcrState';
 import {
   isHealthConnectAvailable,
@@ -806,11 +804,14 @@ export default function HomeScreen() {
   // Upload a weight photo to tenant-media and return its stored key. Pulled
   // out of handleSubmit so capture-time OCR and save both go through one path.
   // Caller guarantees coachId/userId/session are set.
-  const uploadWeightPhoto = async (uri: string): Promise<string> => {
+  const uploadWeightPhoto = async (
+    uri: string,
+    kind: 'weight' | 'steps' = 'weight'
+  ): Promise<string> => {
     const ext = uri.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
     const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
     const imageBlob = await fetch(uri).then((r) => r.blob());
-    const filename = `${Date.now()}_weight.${ext}`;
+    const filename = `${Date.now()}_${kind}.${ext}`;
     const path = `${coachId}/${userId}/${filename}`;
 
     const urlRes = await fetch(`${API_BASE}/api/storage/signed-upload-url`, {
@@ -982,30 +983,54 @@ export default function HomeScreen() {
   const runStepsOcr = async (photoUri: string) => {
     setStepsOcrBusy(true);
     try {
-      const ocrResult = await recognizeText(photoUri, 'latin');
-      const parsed = extractStepsCandidate(ocrResult);
-
-      if (parsed.status === 'no_candidate') {
+      if (!coachId || !userId || !session) {
         setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'OCR_FAILURE', photoUri }));
         return;
       }
 
-      // User's call after trying the low-confidence confirmation prompt in
-      // practice: skip it, accept any successful read silently (matches
-      // the weight-OCR flow's UX, which never asked for confirmation
-      // either). stepsOcrState still supports OCR_SUCCESS_LOW_CONFIDENCE/
-      // 'needs_confirmation' — dispatch that instead of this line if the
-      // confirmation step is wanted back later, no other change needed.
-      setStepsOcrState((s) =>
-        reduceStepsOcrState(s, { type: 'OCR_SUCCESS_HIGH_CONFIDENCE', photoUri, value: parsed.steps })
-      );
-      setSteps(String(parsed.steps));
-      setStepsSource('ocr');
-      dirtyFieldsRef.current.steps = true;
-      setSubmitSuccess(false);
-    } catch (err) {
-      console.warn('[steps-ocr] recognizeText failed:', err instanceof Error ? err.message : err);
-      setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+      // Read server-side (same Gemini route as weight, mode=steps) instead of
+      // on-device ML Kit: ML Kit was unreliable on real devices and the server
+      // path works regardless of sensor / Health Connect state. Upload, then
+      // ask the platform to read the step count.
+      let key: string;
+      try {
+        key = await uploadWeightPhoto(photoUri, 'steps');
+      } catch (err) {
+        console.warn('[steps-ocr] photo upload failed:', err instanceof Error ? err.message : err);
+        setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+        return;
+      }
+
+      let value: number | null = null;
+      try {
+        const res = await fetch(`${API_BASE}/api/weight/ocr`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ path: key, mode: 'steps' }),
+        });
+        if (res.ok) {
+          value = ((await res.json()) as { steps: number | null }).steps;
+        } else {
+          console.warn('[steps-ocr] server OCR HTTP', res.status);
+        }
+      } catch (err) {
+        console.warn('[steps-ocr] server OCR request failed:', err instanceof Error ? err.message : err);
+      }
+
+      if (value !== null) {
+        setStepsOcrState((s) =>
+          reduceStepsOcrState(s, { type: 'OCR_SUCCESS_HIGH_CONFIDENCE', photoUri, value })
+        );
+        setSteps(String(value));
+        setStepsSource('ocr');
+        dirtyFieldsRef.current.steps = true;
+        setSubmitSuccess(false);
+      } else {
+        setStepsOcrState((s) => reduceStepsOcrState(s, { type: 'OCR_FAILURE', photoUri }));
+      }
     } finally {
       setStepsOcrBusy(false);
     }

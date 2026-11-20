@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAnonServerClient, createUserClient } from '@coaching/supabase/auth-server'
 import { createServiceRoleClient } from '@coaching/supabase/server'
-import { parseWeightKg } from '../../../../lib/weight-ocr-parse'
+import { parseWeightKg, parseSteps } from '../../../../lib/weight-ocr-parse'
 
 // Node runtime: base64 image handling needs Node, not edge.
 export const runtime = 'nodejs'
@@ -67,6 +67,9 @@ export async function POST(req: NextRequest) {
     if (typeof rawPath !== 'string') {
       return NextResponse.json({ error: 'path is required' }, { status: 400 })
     }
+    // Same route reads weight scales and step-count screens; the client picks
+    // via mode. Default stays 'weight' so existing callers are unchanged.
+    const mode = (body as Record<string, unknown>)?.mode === 'steps' ? 'steps' : 'weight'
 
     // Path format + ownership: a client may only OCR a photo in its own
     // {coach}/{client}/ folder — never read an arbitrary stored object.
@@ -104,6 +107,22 @@ export async function POST(req: NextRequest) {
     const mediaType = blob.type === 'image/png' ? 'image/png' : 'image/jpeg'
     const base64 = Buffer.from(await blob.arrayBuffer()).toString('base64')
 
+    const prompt =
+      mode === 'steps'
+        ? 'This is a photo or screenshot of a fitness tracker or phone screen showing a daily step count. ' +
+          'Read ONLY the number of steps (the value labelled "steps", a whole number such as 8,421). ' +
+          'Ignore calories, distance (km/mi), heart rate (bpm), floors, and active minutes. ' +
+          'Reply with ONLY the step count as digits (e.g. "8421" or "8,421"). ' +
+          'If no step count is clearly visible, reply with exactly "none". ' +
+          'Never output units, labels, or any other text.'
+        : 'This is a photo of a body-weight scale display (often a seven-segment LCD/LED). ' +
+          'The photo may be rotated sideways or upside-down — mentally rotate it so the ' +
+          'digits are upright before reading. ' +
+          'Read the full weight shown, in kilograms, including every decimal digit on the display. ' +
+          'Reply with ONLY the number (e.g. "72.5" or "81.70"). ' +
+          'If no scale reading is clearly visible, reply with exactly "none". ' +
+          'Never output a rotation angle, degrees, units, words, or any other text.'
+
     // Gemini (Google AI Studio) generateContent REST call — raw fetch so no SDK
     // dependency. maxOutputTokens must leave room beyond the tiny numeric answer:
     // flash runs adaptive thinking and its thinking tokens draw on the same
@@ -118,16 +137,7 @@ export async function POST(req: NextRequest) {
             {
               parts: [
                 { inline_data: { mime_type: mediaType, data: base64 } },
-                {
-                  text:
-                    'This is a photo of a body-weight scale display (often a seven-segment LCD/LED). ' +
-                    'The photo may be rotated sideways or upside-down — mentally rotate it so the ' +
-                    'digits are upright before reading. ' +
-                    'Read the full weight shown, in kilograms, including every decimal digit on the display. ' +
-                    'Reply with ONLY the number (e.g. "72.5" or "81.70"). ' +
-                    'If no scale reading is clearly visible, reply with exactly "none". ' +
-                    'Never output a rotation angle, degrees, units, words, or any other text.',
-                },
+                { text: prompt },
               ],
             },
           ],
@@ -156,19 +166,19 @@ export async function POST(req: NextRequest) {
       .trim()
     const finishReason = candidate?.finishReason ?? 'none'
 
-    // Strict: the whole reply must be the number (range-checked).
-    const weightKg = parseWeightKg(text)
-    const inRange = weightKg !== null
+    // Strict: the whole reply must be the number (range-checked for the mode).
+    const parsed = mode === 'steps' ? parseSteps(text) : parseWeightKg(text)
+    const inRange = parsed !== null
     // Diagnostic: raw model text + decision, visible in Vercel logs. No PII —
     // only internal storage path (coach/client UUIDs) and the number read.
     console.log(
-      `[weight-ocr] path=${rawPath} raw="${text}" parsed=${weightKg ?? 'null'} ` +
+      `[weight-ocr] mode=${mode} path=${rawPath} raw="${text}" parsed=${parsed ?? 'null'} ` +
         `inRange=${inRange} stop=${finishReason} out=${data.usageMetadata?.candidatesTokenCount ?? '?'}`
     )
-    if (!inRange) {
-      return NextResponse.json({ weightKg: null })
+    if (mode === 'steps') {
+      return NextResponse.json({ steps: inRange ? parsed : null })
     }
-    return NextResponse.json({ weightKg })
+    return NextResponse.json({ weightKg: inRange ? parsed : null })
   } catch (err) {
     console.error(
       '[weight-ocr] unhandled error:',
