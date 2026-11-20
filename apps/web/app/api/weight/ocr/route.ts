@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createAnonServerClient, createUserClient } from '@coaching/supabase/auth-server'
 import { createServiceRoleClient } from '@coaching/supabase/server'
+import { parseWeightKg } from '../../../../lib/weight-ocr-parse'
 
 // Node runtime: the Anthropic SDK and base64 image handling need Node, not edge.
 export const runtime = 'nodejs'
@@ -14,9 +15,6 @@ export const maxDuration = 60
 const UUID_SEG = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 const FILE_SEG = '[a-zA-Z0-9._-]{1,255}'
 const PATH_REGEX = new RegExp(`^(${UUID_SEG})/(${UUID_SEG})/(${FILE_SEG})$`)
-
-const MIN_WEIGHT_KG = 30
-const MAX_WEIGHT_KG = 300
 
 // ML Kit (on-device) genuinely can't read seven-segment scale LCD/LED digits
 // (it drops the sparse "7" glyph), so the number is read server-side by a
@@ -150,11 +148,9 @@ export async function POST(req: NextRequest) {
       .join(' ')
       .trim()
 
-    // Model replies with just the number, or "none". Pull the first numeric
-    // token and range-check it the same way the mobile client did.
-    const numMatch = text.replace(',', '.').match(/\d{1,3}(\.\d{1,2})?/)
-    const weightKg = numMatch ? parseFloat(numMatch[0]) : null
-    const inRange = weightKg !== null && weightKg >= MIN_WEIGHT_KG && weightKg <= MAX_WEIGHT_KG
+    // Strict: the whole reply must be the number (range-checked).
+    const weightKg = parseWeightKg(text)
+    const inRange = weightKg !== null
     // Diagnostic: raw model text + decision, visible in Vercel logs. No PII —
     // only internal storage path (coach/client UUIDs) and the number read.
     console.log(
