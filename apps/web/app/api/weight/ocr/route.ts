@@ -22,9 +22,9 @@ const PATH_REGEX = new RegExp(`^(${UUID_SEG})/(${UUID_SEG})/(${FILE_SEG})$`)
 // (100% upright, 53% rotated) was Anthropic-only — Gemini is NOT yet
 // benchmarked on these real scale photos, so re-run docs/WEIGHT_OCR_E2E_TEST.md
 // on a real phone before trusting rotated-photo accuracy.
-// ponytail: GEMINI_MODEL env overrides this — bump to gemini-2.5-pro if flash
+// ponytail: GEMINI_MODEL env overrides this — bump to gemini-3.8-pro if flash
 // misreads rotated displays on the phone pass.
-const OCR_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+const OCR_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
 
 export async function POST(req: NextRequest) {
   try {
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     // Gemini (Google AI Studio) generateContent REST call — raw fetch so no SDK
     // dependency. maxOutputTokens must leave room beyond the tiny numeric answer:
-    // 2.5 flash runs adaptive thinking and its thinking tokens draw on the same
+    // flash runs adaptive thinking and its thinking tokens draw on the same
     // budget, so a tight cap can starve the text answer and return nothing.
     const resp = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${OCR_MODEL}:generateContent`,
