@@ -57,7 +57,10 @@ Record the build ID + commit below. Last known build `5572e303` is OLD — do no
 
 ## 3. Report (fill in)
 
-Date: ____  Tester: ____  Phone/Android: ____  Build ID: 8122e1e0-5186-4efe-a69f-bf5da68287fe  Commit: c2f8198
+Date: ____  Tester: ____  Phone/Android: ____  Build ID: 3d208fe9-d31b-4f39-9216-99475c110320  Commit: e9b4bca
+<!-- Build 3d208fe9 (commit e9b4bca) bundles: Gemini weight OCR, server-side steps OCR (mode=steps), and the Health-Connect->step-sensor fallback. Prod coachos-mvp-web deployed from e9b4bca. Supersedes build 8122e1e0/c2f8198. -->
+<!-- Steps now have their own checks to run alongside the weight table: S1 auto-track reads via Health Connect OR the hardware step counter when HC is empty; S2 "Read steps from a photo" of a tracker screen writes the step count (server OCR, mode=steps); S3 a non-steps photo returns "couldn't read". -->
+
 
 | # | Photo | True kg | Raw model text | Parsed | Latency s | Field showed | Pass |
 |---|-------|---------|----------------|--------|-----------|--------------|------|
