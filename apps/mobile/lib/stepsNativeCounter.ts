@@ -1,3 +1,4 @@
+import { PermissionsAndroid, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { readStepCounter } from '../modules/step-capability';
 import type { StepsReadResult } from './stepsSync';
@@ -52,6 +53,23 @@ export function computeTodaySteps(
  * uses, so decideStepsSync treats it identically.
  */
 export async function readTodaySteps(today: string): Promise<StepsReadResult> {
+  // TYPE_STEP_COUNTER needs the ACTIVITY_RECOGNITION runtime permission on
+  // Android 10+ (API 29). Without the grant the sensor silently delivers NO
+  // events and readStepCounter times out to null — the real "steps missing on a
+  // phone that has a pedometer" cause. Request it before reading; API < 29
+  // grants it at install time, so skip the prompt there.
+  if (Platform.OS === 'android' && typeof Platform.Version === 'number' && Platform.Version >= 29) {
+    try {
+      const perm = PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION;
+      const granted =
+        (await PermissionsAndroid.check(perm)) ||
+        (await PermissionsAndroid.request(perm)) === PermissionsAndroid.RESULTS.GRANTED;
+      if (!granted) return { status: 'denied' };
+    } catch {
+      // Permission API hiccup — try the read anyway rather than blocking it.
+    }
+  }
+
   let current: number | null;
   try {
     current = await readStepCounter();

@@ -141,8 +141,35 @@ export default function WeightCaptureCamera({ visible, onCapture, onClose }: Pro
         skipProcessing: false,
       });
       if (pic?.uri) {
+        // Crop to the alignment ROI (CENTER_ROI {0.15,0.3,0.7,0.4} in frameQuality,
+        // image space) with a 5% pad on each side, so the server OCR gets the
+        // display instead of the whole room — the box the user aligned to now
+        // actually bounds what's sent. Pad guards slight misframing from clipping a
+        // digit. Fall back to the full frame if crop fails.
+        let uri = pic.uri;
+        let w = pic.width ?? 0;
+        let h = pic.height ?? 0;
+        if (w > 0 && h > 0) {
+          try {
+            const cropped = await ImageManipulator.manipulateAsync(
+              pic.uri,
+              [{ crop: {
+                originX: Math.round(0.10 * w),
+                originY: Math.round(0.25 * h),
+                width: Math.round(0.80 * w),
+                height: Math.round(0.50 * h),
+              } }],
+              { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+            );
+            uri = cropped.uri;
+            w = cropped.width;
+            h = cropped.height;
+          } catch {
+            // keep full frame
+          }
+        }
         selection();
-        onCapture(pic.uri, pic.width ?? 0, pic.height ?? 0);
+        onCapture(uri, w, h);
       }
     } catch {
       // swallow — user can simply press Capture again

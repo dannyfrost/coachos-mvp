@@ -680,10 +680,16 @@ export default function HomeScreen() {
           // No value is written here, so a no_data device never records a
           // false zero.
           const support = getStepCollectionSupport();
+          const hasSensor = !!support.capability?.hasStepCounterSensor;
+          // 'unsupported' means NO auto path exists — neither HC-native counting
+          // NOR a hardware step sensor. A phone WITH the sensor is never
+          // unsupported, even on API < 34: the TYPE_STEP_COUNTER fallback reads
+          // it, so a null there is 'no_data' (or 'permission_denied' when
+          // ACTIVITY_RECOGNITION was refused), not "this phone can't auto-track".
           const reason =
-            hcAttempt.status === 'permission_denied'
+            hcAttempt.status === 'permission_denied' || counterStatus === 'denied'
               ? 'permission_denied'
-              : !support.supported
+              : !support.supported && !hasSensor
                 ? 'unsupported'
                 : hcAttempt.status === 'error'
                   ? 'error'
@@ -691,18 +697,22 @@ export default function HomeScreen() {
           setStepsReason(reason);
           console.log('[stepsForegroundSync] no-value', {
             hc: hcAttempt.status,
+            counter: counterStatus,
             reason,
             cap: support.supported ? 'supported' : support.reason,
+            hasSensor,
             manual,
           });
-          // A definitively unsupported device, a denied permission, or a hard
-          // "unavailable" will never succeed automatically, so surface the
-          // photo/manual fallback right away. A transient no_data stays gated
-          // on a manual pull so a capable device isn't nagged prematurely.
+          // Surface the photo fallback whenever auto-track can't deliver now: an
+          // unsupported device, a denied permission, a hard "unavailable", or a
+          // sensor phone that still produced no reading (so the user isn't stuck
+          // at "—" with no action). A capable HC device with a transient no_data
+          // and no sensor stays gated on a manual pull to avoid nagging.
           if (
             reason === 'unsupported' ||
             reason === 'permission_denied' ||
             hcAttempt.status === 'unavailable' ||
+            hasSensor ||
             manual
           ) {
             setStepsSyncUnavailable(true);
