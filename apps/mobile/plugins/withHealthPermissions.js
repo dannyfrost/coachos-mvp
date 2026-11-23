@@ -34,23 +34,6 @@ const withHealthPermissions = (config) => {
       }
     }
 
-    // The camera stack (expo-camera) merges RECORD_AUDIO into the manifest for
-    // video+mic capture, but this app only takes still photos — never records —
-    // so the mic permission is unused and a Play-Store trust flag. Force it out
-    // of the merged manifest with tools:node="remove" (and drop any direct copy).
-    const RECORD_AUDIO = 'android.permission.RECORD_AUDIO';
-    manifest['uses-permission'] = manifest['uses-permission'].filter(
-      (p) => !(p.$ && p.$['android:name'] === RECORD_AUDIO)
-    );
-    manifest['uses-permission'].push({
-      $: { 'android:name': RECORD_AUDIO, 'tools:node': 'remove' },
-    });
-    // tools:node is only honored if the tools namespace is declared on <manifest>.
-    manifest.$ = manifest.$ || {};
-    if (!manifest.$['xmlns:tools']) {
-      manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
-    }
-
     // Android 14+ (API 34): Health Connect is built into the OS and REQUIRES an
     // activity that handles VIEW_PERMISSION_USAGE with category HEALTH_PERMISSIONS.
     // Without it every HC read/write throws
