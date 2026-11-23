@@ -127,31 +127,45 @@ export async function POST(req: NextRequest) {
     // dependency. maxOutputTokens must leave room beyond the tiny numeric answer:
     // flash runs adaptive thinking and its thinking tokens draw on the same
     // budget, so a tight cap can starve the text answer and return nothing.
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${OCR_MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { inline_data: { mime_type: mediaType, data: base64 } },
-                { text: prompt },
-              ],
-            },
+    const reqBody = JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { inline_data: { mime_type: mediaType, data: base64 } },
+            { text: prompt },
           ],
-          generationConfig: { temperature: 0, maxOutputTokens: 4096 },
-        }),
-      }
-    )
+        },
+      ],
+      generationConfig: { temperature: 0, maxOutputTokens: 4096 },
+    })
+
+    // gemini-3.8-flash returns transient 503 "high demand" under load — without a
+    // retry that fails every read (weight AND steps, which share this route) and
+    // shows the user "couldn't read". Retry 429/5xx with exponential backoff.
+    // 4 attempts, waits 0.5+1+2s = 3.5s worst case, well inside maxDuration=60.
+    // ponytail: in-request retry only; if 503 is a sustained outage nothing here
+    // helps — add a fallback model id then.
+    const RETRYABLE = new Set([429, 500, 502, 503, 504])
+    let resp: Response | null = null
+    for (let attempt = 0; attempt < 4; attempt++) {
+      resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${OCR_MODEL}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
+          body: reqBody,
+        }
+      )
+      if (resp.ok || !RETRYABLE.has(resp.status)) break
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 500 * 2 ** attempt))
+    }
 
     // Separate an upstream failure (bad key, quota, 5xx) from a genuine no-read:
     // return 502 and log the body, instead of a generic 500 that the app shows
     // as "couldn't read the scale".
-    if (!resp.ok) {
-      const errBody = await resp.text()
-      console.error(`[weight-ocr] gemini HTTP ${resp.status}: ${errBody.slice(0, 500)}`)
+    if (!resp || !resp.ok) {
+      const errBody = resp ? await resp.text() : 'no response'
+      console.error(`[weight-ocr] gemini HTTP ${resp?.status ?? 0}: ${errBody.slice(0, 500)}`)
       return NextResponse.json({ error: 'OCR upstream error' }, { status: 502 })
     }
 
