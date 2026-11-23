@@ -22,9 +22,11 @@ const PATH_REGEX = new RegExp(`^(${UUID_SEG})/(${UUID_SEG})/(${FILE_SEG})$`)
 // (100% upright, 53% rotated) was Anthropic-only — Gemini is NOT yet
 // benchmarked on these real scale photos, so re-run docs/WEIGHT_OCR_E2E_TEST.md
 // on a real phone before trusting rotated-photo accuracy.
-// ponytail: GEMINI_MODEL env overrides this — bump to gemini-3.8-pro if flash
-// misreads rotated displays on the phone pass.
-const OCR_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+// gemini-3.8-flash (newest) is sustained-503 overloaded and gemini-2.5-* 404 for
+// this key, so default to gemini-3.5-flash, which has capacity. GEMINI_MODEL
+// overrides; bump to gemini-pro-latest if flash misreads rotated displays on the
+// phone pass. Check live availability with ListModels before changing the id.
+const OCR_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash'
 
 export async function POST(req: NextRequest) {
   try {
@@ -147,7 +149,7 @@ export async function POST(req: NextRequest) {
     // = 6 calls, inside maxDuration=60. Override via GEMINI_MODEL (primary) and
     // GEMINI_FALLBACK_MODELS (comma-separated).
     const RETRYABLE = new Set([429, 500, 502, 503, 504])
-    const fallbacks = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.8-flash-lite,gemini-3.8-pro')
+    const fallbacks = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-flash-lite-latest,gemini-3.5-flash-lite')
       .split(',')
       .map((m) => m.trim())
       .filter(Boolean)
