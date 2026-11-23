@@ -139,33 +139,43 @@ export async function POST(req: NextRequest) {
       generationConfig: { temperature: 0, maxOutputTokens: 4096 },
     })
 
-    // gemini-3.8-flash returns transient 503 "high demand" under load — without a
-    // retry that fails every read (weight AND steps, which share this route) and
-    // shows the user "couldn't read". Retry 429/5xx with exponential backoff.
-    // 4 attempts, waits 0.5+1+2s = 3.5s worst case, well inside maxDuration=60.
-    // ponytail: in-request retry only; if 503 is a sustained outage nothing here
-    // helps — add a fallback model id then.
+    // gemini-3.8-flash hits SUSTAINED 503 "high demand" under load — retrying the
+    // same model doesn't clear a sustained overload, so fall through a short model
+    // ladder: 2 quick attempts each (0.6s backoff on 429/5xx), first 200 wins. A
+    // 404/400 means that id is unavailable to this key, so skip to the next model.
+    // Fixes every read (weight AND steps share this route). Bounded: 3 models x 2
+    // = 6 calls, inside maxDuration=60. Override via GEMINI_MODEL (primary) and
+    // GEMINI_FALLBACK_MODELS (comma-separated).
     const RETRYABLE = new Set([429, 500, 502, 503, 504])
+    const fallbacks = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.8-flash-lite,gemini-3.8-pro')
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean)
+    const models = [...new Set([OCR_MODEL, ...fallbacks])]
     let resp: Response | null = null
-    for (let attempt = 0; attempt < 4; attempt++) {
-      resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${OCR_MODEL}:generateContent`,
-        {
-          method: 'POST',
-          headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
-          body: reqBody,
-        }
-      )
-      if (resp.ok || !RETRYABLE.has(resp.status)) break
-      if (attempt < 3) await new Promise((r) => setTimeout(r, 500 * 2 ** attempt))
+    let usedModel = OCR_MODEL
+    outer: for (const model of models) {
+      usedModel = model
+      for (let attempt = 0; attempt < 2; attempt++) {
+        resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: 'POST',
+            headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
+            body: reqBody,
+          }
+        )
+        if (resp.ok) break outer
+        const errBody = await resp.text()
+        console.error(`[weight-ocr] ${model} HTTP ${resp.status}: ${errBody.slice(0, 200)}`)
+        if (!RETRYABLE.has(resp.status)) break // id unavailable/bad → next model
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 600))
+      }
     }
 
-    // Separate an upstream failure (bad key, quota, 5xx) from a genuine no-read:
-    // return 502 and log the body, instead of a generic 500 that the app shows
-    // as "couldn't read the scale".
+    // All models failed (bad key, quota, sustained outage): return 502, not the
+    // generic 500 the app shows as "couldn't read the scale".
     if (!resp || !resp.ok) {
-      const errBody = resp ? await resp.text() : 'no response'
-      console.error(`[weight-ocr] gemini HTTP ${resp?.status ?? 0}: ${errBody.slice(0, 500)}`)
       return NextResponse.json({ error: 'OCR upstream error' }, { status: 502 })
     }
 
@@ -186,7 +196,7 @@ export async function POST(req: NextRequest) {
     // Diagnostic: raw model text + decision, visible in Vercel logs. No PII —
     // only internal storage path (coach/client UUIDs) and the number read.
     console.log(
-      `[weight-ocr] mode=${mode} path=${rawPath} raw="${text}" parsed=${parsed ?? 'null'} ` +
+      `[weight-ocr] mode=${mode} model=${usedModel} path=${rawPath} raw="${text}" parsed=${parsed ?? 'null'} ` +
         `inRange=${inRange} stop=${finishReason} out=${data.usageMetadata?.candidatesTokenCount ?? '?'}`
     )
     if (mode === 'steps') {
