@@ -2005,6 +2005,21 @@ export default function HomeScreen() {
                   </View>
                 )}
 
+              {/* The hardware TYPE_STEP_COUNTER fallback (stepsSource ===
+                  'device_counter') can only count from the first app-open of
+                  the day and emits nothing while the phone is still, so its
+                  value is a partial estimate, NOT today's real total. Label it
+                  as such and point to the accurate fix — a step provider feeding
+                  Health Connect — so this estimate never masquerades as the
+                  authoritative count the coach reviews. */}
+              {stepsSource === 'device_counter' && steps.length > 0 && (
+                <Text style={styles.manualFallbackHint}>
+                  Approx — counted by this phone since you opened the app, not
+                  your full day. For the real total, connect a step app (Google
+                  Fit / Samsung Health) to Health Connect.
+                </Text>
+              )}
+
               {stepsSyncUnavailable && (
                 <Text style={styles.manualFallbackHint}>
                   {stepsReason === 'unsupported'
@@ -2012,7 +2027,7 @@ export default function HomeScreen() {
                     : stepsReason === 'permission_denied'
                       ? 'Step access is off in Health Connect — grant it, or add a photo of your step count.'
                       : stepsReason === 'no_data'
-                        ? 'No steps recorded yet today — walk and pull to refresh, or add a photo of your step count.'
+                        ? 'No step source connected to Health Connect — open Health Connect and link a step app (Google Fit / Samsung Health), or add a photo of your step count.'
                         : "Couldn't get steps from your phone — pull to refresh, or add a photo of your step count."}
                 </Text>
               )}
